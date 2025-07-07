@@ -1,47 +1,25 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-require('dotenv').config();
+if (!message.content.startsWith(prefix)) return;
 
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-    ],
-});
+const args = message.content.slice(prefix.length).trim().split(/\s+/);
+const command = args.shift()?.toLowerCase();
 
-const prefix = '=';
-const clickCounters = new Map();
+if (command === 'ping') {
+    const ping = Math.round(client.ws.ping);
+    const embed = new EmbedBuilder()
+        .setTitle('Pong!')
+        .setDescription(`Current latency: ${ping}ms`);
 
-client.once('ready', () => {
-    console.log(`Logged in as ${client.user.tag}`);
-});
+    const customId = `ping_${message.id}_${Date.now()}`;
+    const button = new ButtonBuilder()
+        .setCustomId(customId)
+        .setLabel('🏓')
+        .setStyle(ButtonStyle.Primary);
 
-client.on('messageCreate', async message => {
-    if (message.author.bot) return;
-    if (!message.content.startsWith(prefix)) return;
+    const row = new ActionRowBuilder().addComponents(button);
 
-    const args = message.content.slice(prefix.length).trim().split(/\s+/);
-    const command = args.shift()?.toLowerCase();
-
-    if (command === 'ping') {
-        const wsPing = Math.round(client.ws.ping);
-        const ping = wsPing >= 0 ? wsPing : Date.now() - message.createdTimestamp;
-        const embed = new EmbedBuilder()
-            .setTitle('Pong!')
-            .setDescription(`Current latency: ${ping}ms`)
-            .setFooter({ text: 'Clicks: 0' });
-
-        const customId = `ping_${message.id}_${Date.now()}`;
-        const button = new ButtonBuilder()
-            .setCustomId(customId)
-            .setLabel('🏓')
-            .setStyle(ButtonStyle.Primary);
-
-        const row = new ActionRowBuilder().addComponents(button);
-
-        clickCounters.set(customId, 0);
-        await message.reply({ embeds: [embed], components: [row] });
-    }
+    clickCounters.set(customId, 0);
+    await message.reply({ embeds: [embed], components: [row] });
+}
 });
 
 client.on('interactionCreate', async interaction => {
@@ -53,8 +31,7 @@ client.on('interactionCreate', async interaction => {
     count += 1;
     clickCounters.set(customId, count);
 
-    const wsPing = Math.round(interaction.client.ws.ping);
-    const ping = wsPing >= 0 ? wsPing : Date.now() - interaction.createdTimestamp;
+    const ping = Math.round(interaction.client.ws.ping);
     const embed = new EmbedBuilder()
         .setTitle('Pong!')
         .setDescription(`Current latency: ${ping}ms`)
