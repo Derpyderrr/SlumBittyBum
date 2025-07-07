@@ -24,10 +24,12 @@ client.on('messageCreate', async message => {
     const command = args.shift()?.toLowerCase();
 
     if (command === 'ping') {
-        const ping = Math.round(client.ws.ping);
+        const wsPing = Math.round(client.ws.ping);
+        const ping = wsPing >= 0 ? wsPing : Date.now() - message.createdTimestamp;
         const embed = new EmbedBuilder()
             .setTitle('Pong!')
-            .setDescription(`Current latency: ${ping}ms`);
+            .setDescription(`Current latency: ${ping}ms`)
+            .setFooter({ text: 'Clicks: 0' });
 
         const customId = `ping_${message.id}_${Date.now()}`;
         const button = new ButtonBuilder()
@@ -51,7 +53,8 @@ client.on('interactionCreate', async interaction => {
     count += 1;
     clickCounters.set(customId, count);
 
-    const ping = Math.round(interaction.client.ws.ping);
+    const wsPing = Math.round(interaction.client.ws.ping);
+    const ping = wsPing >= 0 ? wsPing : Date.now() - interaction.createdTimestamp;
     const embed = new EmbedBuilder()
         .setTitle('Pong!')
         .setDescription(`Current latency: ${ping}ms`)
