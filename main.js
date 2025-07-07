@@ -20,7 +20,6 @@ if (command === 'ping') {
     clickCounters.set(customId, 0);
     await message.reply({ embeds: [embed], components: [row] });
 }
-});
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
