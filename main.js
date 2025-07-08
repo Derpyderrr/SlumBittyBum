@@ -99,7 +99,7 @@ const commandInfo = [
     { name: 'fish', description: 'Fish for coins', category: 'Economy' },
     { name: 'shop', description: 'View or buy shop items', category: 'Economy' },
     { name: 'embedcolor', description: 'Change embed color', category: 'Utility' },
-    { name: 'job', description: 'Apply for a job', category: 'Jobs' },
+    { name: 'job', description: 'Apply for a job (use `=job list` to view)', category: 'Jobs' },
     { name: 'work', description: 'Work at your current job', category: 'Jobs' },
     { name: 'help', description: 'Show this help message', category: 'Utility' },
 ];
@@ -269,23 +269,67 @@ client.on('messageCreate', async message => {
         await message.reply({ embeds: [embed], components: [row] });
     } else if (command === 'job') {
         const user = getUserData(message.author.id);
-        const available = jobs.filter((j, i) => {
-            if (j.id === 'legend') {
-                return jobs.slice(0, -1).every(job => user.jobLevels[job.id] >= 100);
+        if (args.length > 0) {
+            const input = args[0].toLowerCase();
+            const job = jobs.find(j => j.id === input || j.name.toLowerCase() === input);
+            if (!job) {
+                const embed = new EmbedBuilder()
+                    .setTitle('Job')
+                    .setDescription('Job not found. Use `=job` to view available jobs.')
+                    .setColor(getEmbedColor(user));
+                await message.reply({ embeds: [embed] });
+            } else {
+                const index = jobs.findIndex(j => j.id === job.id);
+                if (job.id === 'legend') {
+                    if (!jobs.slice(0, -1).every(j => (user.jobLevels[j.id] || 0) >= 100)) {
+                        const embed = new EmbedBuilder()
+                            .setTitle('Job')
+                            .setDescription('You must reach level 100 in all jobs to apply for Legend.')
+                            .setColor(getEmbedColor(user));
+                        await message.reply({ embeds: [embed] });
+                        return;
+                    }
+                } else if (index > 0) {
+                    const prev = jobs[index - 1];
+                    if ((user.jobLevels[prev.id] || 0) < 100) {
+                        const embed = new EmbedBuilder()
+                            .setTitle('Job')
+                            .setDescription(`You need level 100 in ${prev.name} first.`)
+                            .setColor(getEmbedColor(user));
+                        await message.reply({ embeds: [embed] });
+                        return;
+                    }
+                }
+                user.currentJob = job.id;
+                if (!user.jobLevels[job.id]) {
+                    user.jobLevels[job.id] = 0;
+                }
+                setUserData(message.author.id, user);
+                const embed = new EmbedBuilder()
+                    .setTitle('Job')
+                    .setDescription(`You applied to ${job.name}!`)
+                    .setColor(getEmbedColor(user));
+                await message.reply({ embeds: [embed] });
             }
-            if (i === 0) return true;
-            const prev = jobs[i - 1];
-            return user.jobLevels[prev.id] >= 100;
-        });
-        const menu = new StringSelectMenuBuilder()
-            .setCustomId(`jobselect_${message.author.id}`)
-            .setPlaceholder('Select a job')
-            .addOptions(available.map(j => ({ label: j.name, value: j.id })));
-        const row = new ActionRowBuilder().addComponents(menu);
-        const embed = new EmbedBuilder()
-            .setTitle('Available Jobs')
-            .setColor(getEmbedColor(user));
-        await message.reply({ embeds: [embed], components: [row] });
+        } else {
+            const available = jobs.filter((j, i) => {
+                if (j.id === 'legend') {
+                    return jobs.slice(0, -1).every(job => user.jobLevels[job.id] >= 100);
+                }
+                if (i === 0) return true;
+                const prev = jobs[i - 1];
+                return user.jobLevels[prev.id] >= 100;
+            });
+            const menu = new StringSelectMenuBuilder()
+                .setCustomId(`jobselect_${message.author.id}`)
+                .setPlaceholder('Select a job')
+                .addOptions(available.map(j => ({ label: j.name, value: j.id })));
+            const row = new ActionRowBuilder().addComponents(menu);
+            const embed = new EmbedBuilder()
+                .setTitle('Available Jobs')
+                .setColor(getEmbedColor(user));
+            await message.reply({ embeds: [embed], components: [row] });
+        }
     } else if (command === 'work') {
         const user = getUserData(message.author.id);
         if (!user.currentJob) {
