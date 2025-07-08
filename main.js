@@ -33,6 +33,12 @@ function getUserData(id) {
             color: 0x00ff99,
             jobLevels: {},
             currentJob: null,
+            webhookName: null,
+            webhookAvatar: null,
+            webhookActive: false,
+            webhookId: null,
+            webhookToken: null,
+            webhookChannelId: null,
         };
         saveData(data);
     } else {
@@ -54,6 +60,15 @@ function getUserData(id) {
                 }
             }
         }
+        if (data[id].webhookActive === undefined) {
+            data[id].webhookName = null;
+            data[id].webhookAvatar = null;
+            data[id].webhookActive = false;
+            data[id].webhookId = null;
+            data[id].webhookToken = null;
+            data[id].webhookChannelId = null;
+            saveData(data);
+        }
     }
     return data[id];
 }
@@ -70,6 +85,58 @@ function getEmbedColor(user) {
         return Math.floor(Math.random() * 0xffffff);
     }
     return user.color;
+}
+
+async function createUserWebhook(userId, channel) {
+    const user = getUserData(userId);
+    try {
+        if (user.webhookId && user.webhookToken) {
+            const old = await client.fetchWebhook(user.webhookId, user.webhookToken);
+            await old.delete().catch(() => {});
+        }
+    } catch {}
+    const webhook = await channel.createWebhook({
+        name: user.webhookName || client.user.username,
+        avatar: user.webhookAvatar || client.user.displayAvatarURL(),
+    });
+    user.webhookId = webhook.id;
+    user.webhookToken = webhook.token;
+    user.webhookChannelId = channel.id;
+    user.webhookActive = true;
+    setUserData(userId, user);
+    return webhook;
+}
+
+async function disableUserWebhook(userId) {
+    const user = getUserData(userId);
+    if (user.webhookId && user.webhookToken) {
+        try {
+            const wh = await client.fetchWebhook(user.webhookId, user.webhookToken);
+            await wh.delete().catch(() => {});
+        } catch {}
+    }
+    user.webhookId = null;
+    user.webhookToken = null;
+    user.webhookChannelId = null;
+    user.webhookActive = false;
+    setUserData(userId, user);
+}
+
+async function sendResponse(message, user, options) {
+    if (user.webhookActive && user.webhookId && user.webhookToken) {
+        try {
+            const webhook = await client.fetchWebhook(user.webhookId, user.webhookToken);
+            await webhook.send({
+                username: user.webhookName || client.user.username,
+                avatarURL: user.webhookAvatar || client.user.displayAvatarURL(),
+                ...options,
+            });
+            return;
+        } catch (err) {
+            console.error('Webhook send failed', err);
+        }
+    }
+    await message.reply(options);
 }
 
 const shopItems = {
@@ -148,6 +215,9 @@ const commandInfo = [
     { name: 'sell', description: 'Sell items from your inventory', category: 'Economy' },
     { name: 'open', description: 'Open a lootbox', category: 'Economy' },
     { name: 'lootpool', description: 'Show loot chances for a command', category: 'Economy' },
+    { name: 'webhook', description: 'Toggle webhook mode', category: 'Utility' },
+    { name: 'whpfp', description: 'Set webhook avatar URL', category: 'Utility' },
+    { name: 'whname', description: 'Set webhook name', category: 'Utility' },
     { name: 'embedcolor', description: 'Change embed color', category: 'Utility' },
     { name: 'job', description: 'Apply for a job (use `=job list` to view)', category: 'Jobs' },
     { name: 'work', description: 'Work at your current job', category: 'Jobs' },
@@ -180,6 +250,14 @@ client.on('messageCreate', async message => {
 
     const args = message.content.slice(prefix.length).trim().split(/\s+/);
     const command = args.shift()?.toLowerCase();
+    let user = getUserData(message.author.id);
+
+    if (user.webhookActive) {
+        if (!user.webhookId || !user.webhookToken || user.webhookChannelId !== message.channel.id) {
+            await createUserWebhook(message.author.id, message.channel);
+            user = getUserData(message.author.id);
+        }
+    }
 
     if (command === 'ping') {
         const wsPing = Math.round(client.ws.ping);
@@ -200,14 +278,14 @@ client.on('messageCreate', async message => {
         const row = new ActionRowBuilder().addComponents(button);
 
         clickCounters.set(customId, 0);
-        await message.reply({ embeds: [embed], components: [row] });
+        await sendResponse(message, user, { embeds: [embed], components: [row] });
     } else if (command === 'wallet') {
         const user = getUserData(message.author.id);
         const embed = new EmbedBuilder()
             .setTitle(`💰 ${message.author.username}'s Wallet`)
             .setDescription(`You have **${user.wallet}** coins.`)
             .setColor(getEmbedColor(user));
-        await message.reply({ embeds: [embed] });
+        await sendResponse(message, user, { embeds: [embed] });
     } else if (command === 'daily') {
         const user = getUserData(message.author.id);
         const now = Date.now();
@@ -217,7 +295,7 @@ client.on('messageCreate', async message => {
                 .setTitle('📅 Daily Reward')
                 .setDescription(`You've already claimed your reward! Come back in **${remaining}** hour(s).`)
                 .setColor(getEmbedColor(user));
-            await message.reply({ embeds: [embed] });
+            await sendResponse(message, user, { embeds: [embed] });
         } else {
             const amount = Math.floor(Math.random() * 100) + 100;
             user.wallet += amount;
@@ -227,7 +305,7 @@ client.on('messageCreate', async message => {
                 .setTitle('📅 Daily Reward')
                 .setDescription(`You collected **${amount}** coins! See you tomorrow!`)
                 .setColor(getEmbedColor(user));
-            await message.reply({ embeds: [embed] });
+            await sendResponse(message, user, { embeds: [embed] });
         }
     } else if (command === 'beg') {
         const user = getUserData(message.author.id);
@@ -238,7 +316,7 @@ client.on('messageCreate', async message => {
             .setTitle('🙏 Begging')
             .setDescription(`Someone felt generous and gave you **${amount}** coins.`)
             .setColor(getEmbedColor(user));
-        await message.reply({ embeds: [embed] });
+        await sendResponse(message, user, { embeds: [embed] });
     } else if (['dig', 'hunt', 'fish'].includes(command)) {
         const user = getUserData(message.author.id);
         let itemKey;
@@ -260,7 +338,7 @@ client.on('messageCreate', async message => {
                 .setTitle('⚠️ Missing Item')
                 .setDescription(`You need a **${shopItems[itemKey].name}** to start ${action}. Check the shop!`)
                 .setColor(getEmbedColor(user));
-            await message.reply({ embeds: [embed] });
+            await sendResponse(message, user, { embeds: [embed] });
             return;
         }
 
@@ -294,7 +372,7 @@ client.on('messageCreate', async message => {
             .setTitle(`${emojis[action]} ${action.charAt(0).toUpperCase() + action.slice(1)}`)
             .setDescription(`You earned **${amount}** coins by ${action}!${lootText}`)
             .setColor(getEmbedColor(user));
-        await message.reply({ embeds: [embed] });
+        await sendResponse(message, user, { embeds: [embed] });
     } else if (command === 'shop') {
         const user = getUserData(message.author.id);
         if (args[0] && args[0].toLowerCase() === 'buy' && args[1]) {
@@ -305,7 +383,7 @@ client.on('messageCreate', async message => {
                     .setTitle('🛒 Shop')
                     .setDescription('Item not found.')
                     .setColor(getEmbedColor(user));
-                await message.reply({ embeds: [embed] });
+                await sendResponse(message, user, { embeds: [embed] });
                 return;
             }
             if (user.wallet < shopItem.price) {
@@ -313,7 +391,7 @@ client.on('messageCreate', async message => {
                     .setTitle('🛒 Shop')
                     .setDescription(`You don't have enough coins for a **${shopItem.name}**.`)
                     .setColor(getEmbedColor(user));
-                await message.reply({ embeds: [embed] });
+                await sendResponse(message, user, { embeds: [embed] });
                 return;
             }
             user.wallet -= shopItem.price;
@@ -328,7 +406,7 @@ client.on('messageCreate', async message => {
                 .setTitle('🛒 Shop')
                 .setDescription(`You bought a **${shopItem.name}** for **${shopItem.price}** coins.`)
                 .setColor(getEmbedColor(user));
-            await message.reply({ embeds: [embed] });
+            await sendResponse(message, user, { embeds: [embed] });
         } else {
             const desc = Object.entries(shopItems)
                 .map(([k, v]) => `**${v.name}** - ${v.price} coins`)
@@ -338,7 +416,7 @@ client.on('messageCreate', async message => {
                 .setDescription(desc)
                 .setFooter({ text: `Use =shop buy <item>` })
                 .setColor(getEmbedColor(user));
-            await message.reply({ embeds: [embed] });
+            await sendResponse(message, user, { embeds: [embed] });
         }
     } else if (command === 'inventory') {
         const user = getUserData(message.author.id);
@@ -352,14 +430,14 @@ client.on('messageCreate', async message => {
             .setTitle(`🎒 ${message.author.username}'s Inventory`)
             .setDescription(lines)
             .setColor(getEmbedColor(user));
-        await message.reply({ embeds: [embed] });
+        await sendResponse(message, user, { embeds: [embed] });
     } else if (command === 'open') {
         const user = getUserData(message.author.id);
         if (!args[0]) {
             const basic = user.inventory['lootbox_basic']?.count || 0;
             const rare = user.inventory['lootbox_rare']?.count || 0;
             const epic = user.inventory['lootbox_epic']?.count || 0;
-            await message.reply({
+            await sendResponse(message, user, {
                 content: `Specify a lootbox to open: **basic**, **rare**, or **epic**.\nYou have Basic x${basic}, Rare x${rare}, Epic x${epic}.`
             });
             return;
@@ -372,7 +450,7 @@ client.on('messageCreate', async message => {
 
         const entry = user.inventory[box];
         if (!entry || entry.count < 1 || !box.startsWith('lootbox')) {
-            await message.reply({ content: 'You do not have that lootbox.' });
+            await sendResponse(message, user, { content: 'You do not have that lootbox.' });
             return;
         }
 
@@ -399,26 +477,26 @@ client.on('messageCreate', async message => {
 
         setUserData(message.author.id, user);
         const lootText = loot.length ? ` You also received: ${loot.join(', ')}.` : '';
-        await message.reply({ content: `You opened a ${shopItems[box].name} and received ${coins} coins!${lootText}` });
+        await sendResponse(message, user, { content: `You opened a ${shopItems[box].name} and received ${coins} coins!${lootText}` });
     } else if (command === 'sell' && args[0]) {
         const item = args[0].toLowerCase();
         const amount = parseInt(args[1], 10) || 1;
         const user = getUserData(message.author.id);
         const inv = user.inventory[item];
         if (!inv || inv.count < amount || inv.durability !== undefined) {
-            await message.reply({ content: 'You do not have enough of that item to sell.' });
+            await sendResponse(message, user, { content: 'You do not have enough of that item to sell.' });
             return;
         }
         const price = (shopItems[item]?.price / 2) || sellPrices[item];
         if (!price) {
-            await message.reply({ content: 'That item cannot be sold.' });
+            await sendResponse(message, user, { content: 'That item cannot be sold.' });
             return;
         }
         inv.count -= amount;
         if (inv.count <= 0) delete user.inventory[item];
         user.wallet += price * amount;
         setUserData(message.author.id, user);
-        await message.reply({ content: `Sold ${amount} ${item} for ${price * amount} coins.` });
+        await sendResponse(message, user, { content: `Sold ${amount} ${item} for ${price * amount} coins.` });
     } else if (command === 'lootpool' && args[0]) {
         const target = args[0].toLowerCase();
         let table = null;
@@ -433,16 +511,60 @@ client.on('messageCreate', async message => {
             table = lootTables[target];
         }
         if (!table) {
-            await message.reply({ content: 'Unknown command for loot pool.' });
+            await sendResponse(message, user, { content: 'Unknown command for loot pool.' });
         } else {
             const user = getUserData(message.author.id);
             const lines = table.map(l => `**${l.item}** - ${Math.round(l.chance * 100)}%`).join('\n') || 'None';
+            let coinInfo = '';
+            if (['dig', 'hunt', 'fish'].includes(target)) {
+                coinInfo = '\nCoins: 25-100';
+            } else if (target === 'open') {
+                coinInfo = '\nCoins by box: Basic 50-149, Rare 100-299, Epic 200-599';
+            }
             const embed = new EmbedBuilder()
                 .setTitle(`🎁 Loot Pool for ${target}`)
-                .setDescription(lines)
+                .setDescription(lines + coinInfo)
+                .setColor(getEmbedColor(user));
+            await sendResponse(message, user, { embeds: [embed] });
+        }
+    } else if (command === 'webhook') {
+        if (user.webhookActive) {
+            await disableUserWebhook(message.author.id);
+            const embed = new EmbedBuilder()
+                .setTitle('Webhook Mode Disabled')
                 .setColor(getEmbedColor(user));
             await message.reply({ embeds: [embed] });
+        } else {
+            await createUserWebhook(message.author.id, message.channel);
+            user = getUserData(message.author.id);
+            const embed = new EmbedBuilder()
+                .setTitle('Webhook mode now active. Use =whpfp or =whname to customize your webhook')
+                .setColor(getEmbedColor(user));
+            await sendResponse(message, user, { embeds: [embed] });
         }
+    } else if (command === 'whpfp') {
+        const url = args[0] || message.attachments.first()?.url;
+        if (!url) return;
+        user.webhookAvatar = url;
+        setUserData(message.author.id, user);
+        if (user.webhookActive) {
+            try {
+                const wh = await client.fetchWebhook(user.webhookId, user.webhookToken);
+                await wh.edit({ avatar: url });
+            } catch {}
+        }
+        await sendResponse(message, user, { content: 'Webhook avatar updated.' });
+    } else if (command === 'whname' && args[0]) {
+        const name = args.join(' ');
+        user.webhookName = name;
+        setUserData(message.author.id, user);
+        if (user.webhookActive) {
+            try {
+                const wh = await client.fetchWebhook(user.webhookId, user.webhookToken);
+                await wh.edit({ name });
+            } catch {}
+        }
+        await sendResponse(message, user, { content: 'Webhook name updated.' });
     } else if (command === 'embedcolor') {
         const user = getUserData(message.author.id);
         const menu = new StringSelectMenuBuilder()
@@ -453,7 +575,7 @@ client.on('messageCreate', async message => {
         const embed = new EmbedBuilder()
             .setTitle('🎨 Choose your embed color')
             .setColor(getEmbedColor(user));
-        await message.reply({ embeds: [embed], components: [row] });
+        await sendResponse(message, user, { embeds: [embed], components: [row] });
     } else if (command === 'job') {
         const user = getUserData(message.author.id);
         if (args.length > 0) {
@@ -464,7 +586,7 @@ client.on('messageCreate', async message => {
                     .setTitle('💼 Job')
                     .setDescription('Job not found. Use `=job` to view available jobs.')
                     .setColor(getEmbedColor(user));
-                await message.reply({ embeds: [embed] });
+                await sendResponse(message, user, { embeds: [embed] });
             } else {
                 const index = jobs.findIndex(j => j.id === job.id);
                 if (job.id === 'legend') {
@@ -473,7 +595,7 @@ client.on('messageCreate', async message => {
                             .setTitle('💼 Job')
                             .setDescription('You must reach level 100 in all jobs to apply for Legend.')
                             .setColor(getEmbedColor(user));
-                        await message.reply({ embeds: [embed] });
+                        await sendResponse(message, user, { embeds: [embed] });
                         return;
                     }
                 } else if (index > 0) {
@@ -483,7 +605,7 @@ client.on('messageCreate', async message => {
                             .setTitle('💼 Job')
                             .setDescription(`You need level 100 in ${prev.name} first.`)
                             .setColor(getEmbedColor(user));
-                        await message.reply({ embeds: [embed] });
+                        await sendResponse(message, user, { embeds: [embed] });
                         return;
                     }
                 }
@@ -496,7 +618,7 @@ client.on('messageCreate', async message => {
                     .setTitle('💼 Job')
                     .setDescription(`You applied to ${job.name}!`)
                     .setColor(getEmbedColor(user));
-                await message.reply({ embeds: [embed] });
+                await sendResponse(message, user, { embeds: [embed] });
             }
         } else {
             const available = jobs.filter((j, i) => {
@@ -515,7 +637,7 @@ client.on('messageCreate', async message => {
             const embed = new EmbedBuilder()
                 .setTitle('💼 Available Jobs')
                 .setColor(getEmbedColor(user));
-            await message.reply({ embeds: [embed], components: [row] });
+            await sendResponse(message, user, { embeds: [embed], components: [row] });
         }
     } else if (command === 'work') {
         const user = getUserData(message.author.id);
@@ -524,7 +646,7 @@ client.on('messageCreate', async message => {
                 .setTitle('💼 Job')
                 .setDescription('Apply for a job first using =job')
                 .setColor(getEmbedColor(user));
-            await message.reply({ embeds: [embed] });
+            await sendResponse(message, user, { embeds: [embed] });
         } else {
             const level = user.jobLevels[user.currentJob] || 0;
             if (level < 100) {
@@ -537,7 +659,7 @@ client.on('messageCreate', async message => {
                 .setTitle(`💼 Working as ${jobs.find(j => j.id === user.currentJob).name}`)
                 .setDescription(`You earned **${amount}** coins. Job level: ${user.jobLevels[user.currentJob]}`)
                 .setColor(getEmbedColor(user));
-            await message.reply({ embeds: [embed] });
+            await sendResponse(message, user, { embeds: [embed] });
         }
     } else if (command === 'level') {
         const user = getUserData(message.author.id);
@@ -557,14 +679,14 @@ client.on('messageCreate', async message => {
             .setTitle('📊 Levels')
             .setDescription(`Current Job: ${currentJob ? currentJob.name : 'None'}\nCurrent Level: ${currentLevel}\nTotal Level: ${totalLevel}\nUnlocked Jobs: ${unlocked}`)
             .setColor(getEmbedColor(user));
-        await message.reply({ embeds: [embed] });
+        await sendResponse(message, user, { embeds: [embed] });
     } else if (command === 'givemoney' && args[0]) {
         const amount = parseInt(args[0], 10);
         if (!isNaN(amount)) {
             const user = getUserData(message.author.id);
             user.wallet += amount;
             setUserData(message.author.id, user);
-            await message.reply({ content: `Added ${amount} coins to your wallet. 💸` });
+            await sendResponse(message, user, { content: `Added ${amount} coins to your wallet. 💸` });
         }
     } else if (command === 'levelset' && args[0]) {
         const amount = parseInt(args[0], 10);
@@ -573,9 +695,9 @@ client.on('messageCreate', async message => {
             if (user.currentJob) {
                 user.jobLevels[user.currentJob] = amount;
                 setUserData(message.author.id, user);
-                await message.reply({ content: `Set **${jobs.find(j => j.id === user.currentJob).name}** level to ${amount}. 📈` });
+                await sendResponse(message, user, { content: `Set **${jobs.find(j => j.id === user.currentJob).name}** level to ${amount}. 📈` });
             } else {
-                await message.reply({ content: 'You do not have a job selected.' });
+                await sendResponse(message, user, { content: 'You do not have a job selected.' });
             }
         }
     } else if (command === 'levelsetall' && args[0]) {
@@ -586,7 +708,7 @@ client.on('messageCreate', async message => {
                 user.jobLevels[j.id] = amount;
             }
             setUserData(message.author.id, user);
-            await message.reply({ content: `Set all job levels to ${amount}. 📈` });
+            await sendResponse(message, user, { content: `Set all job levels to ${amount}. 📈` });
         }
     } else if (command === 'control') {
         const amount = parseInt(args[0], 10) || 1;
@@ -600,7 +722,7 @@ client.on('messageCreate', async message => {
             .setTitle('🛠️ Control Panel')
             .setDescription('Choose an item to add. Use `=givemoney`, `=levelset`, or `=levelsetall` for other actions.')
             .setColor(getEmbedColor(user));
-        await message.reply({ embeds: [embed], components: [row] });
+        await sendResponse(message, user, { embeds: [embed], components: [row] });
     } else if (command === 'help') {
         const user = getUserData(message.author.id);
         const categories = {};
@@ -615,7 +737,7 @@ client.on('messageCreate', async message => {
         Object.keys(categories).sort().forEach(cat => {
             embed.addFields({ name: cat, value: categories[cat].join('\n'), inline: true });
         });
-        await message.reply({ embeds: [embed] });
+        await sendResponse(message, user, { embeds: [embed] });
     }
 });
 
