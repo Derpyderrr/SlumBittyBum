@@ -147,6 +147,7 @@ const commandInfo = [
     { name: 'inventory', description: 'View your items', category: 'Economy' },
     { name: 'sell', description: 'Sell items from your inventory', category: 'Economy' },
     { name: 'open', description: 'Open a lootbox', category: 'Economy' },
+    { name: 'lootpool', description: 'Show loot chances for a command', category: 'Economy' },
     { name: 'embedcolor', description: 'Change embed color', category: 'Utility' },
     { name: 'job', description: 'Apply for a job (use `=job list` to view)', category: 'Jobs' },
     { name: 'work', description: 'Work at your current job', category: 'Jobs' },
@@ -418,6 +419,30 @@ client.on('messageCreate', async message => {
         user.wallet += price * amount;
         setUserData(message.author.id, user);
         await message.reply({ content: `Sold ${amount} ${item} for ${price * amount} coins.` });
+    } else if (command === 'lootpool' && args[0]) {
+        const target = args[0].toLowerCase();
+        let table = null;
+        if (target === 'open') {
+            table = [];
+            for (const tbl of Object.values(lootTables)) {
+                for (const lt of tbl) {
+                    table.push({ item: lt.item, chance: 0.1 });
+                }
+            }
+        } else {
+            table = lootTables[target];
+        }
+        if (!table) {
+            await message.reply({ content: 'Unknown command for loot pool.' });
+        } else {
+            const user = getUserData(message.author.id);
+            const lines = table.map(l => `**${l.item}** - ${Math.round(l.chance * 100)}%`).join('\n') || 'None';
+            const embed = new EmbedBuilder()
+                .setTitle(`🎁 Loot Pool for ${target}`)
+                .setDescription(lines)
+                .setColor(getEmbedColor(user));
+            await message.reply({ embeds: [embed] });
+        }
     } else if (command === 'embedcolor') {
         const user = getUserData(message.author.id);
         const menu = new StringSelectMenuBuilder()
