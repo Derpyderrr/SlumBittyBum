@@ -108,7 +108,9 @@ const commandInfo = [
     { name: 'job', description: 'Apply for a job (use `=job list` to view)', category: 'Jobs' },
     { name: 'work', description: 'Work at your current job', category: 'Jobs' },
     { name: 'level', description: 'Show your job levels', category: 'Jobs' },
-    { name: 'control', description: 'Admin controls for testing', category: 'Admin' },
+    { name: 'levelset', description: 'Set your current job level', category: 'Admin' },
+    { name: 'levelsetall', description: 'Set level for all jobs', category: 'Admin' },
+    { name: 'control', description: 'Admin item controls', category: 'Admin' },
     { name: 'givemoney', description: 'Add coins to your wallet', category: 'Admin' },
     { name: 'help', description: 'Show this help message', category: 'Utility' },
 ];
@@ -140,8 +142,8 @@ client.on('messageCreate', async message => {
         const ping = wsPing >= 0 ? wsPing : Date.now() - message.createdTimestamp;
         const user = getUserData(message.author.id);
         const embed = new EmbedBuilder()
-            .setTitle('Pong!')
-            .setDescription(`Current latency: ${ping}ms`)
+            .setTitle('🏓 Pong!')
+            .setDescription(`Current latency: **${ping}ms**`)
             .setColor(getEmbedColor(user))
             .setFooter({ text: 'Clicks: 0' });
 
@@ -158,7 +160,7 @@ client.on('messageCreate', async message => {
     } else if (command === 'wallet') {
         const user = getUserData(message.author.id);
         const embed = new EmbedBuilder()
-            .setTitle(`${message.author.username}'s Wallet`)
+            .setTitle(`💰 ${message.author.username}'s Wallet`)
             .setDescription(`You have **${user.wallet}** coins.`)
             .setColor(getEmbedColor(user));
         await message.reply({ embeds: [embed] });
@@ -168,8 +170,8 @@ client.on('messageCreate', async message => {
         if (now - user.lastDaily < 86400000) {
             const remaining = Math.ceil((86400000 - (now - user.lastDaily)) / 3600000);
             const embed = new EmbedBuilder()
-                .setTitle('Daily Reward')
-                .setDescription(`You already claimed your daily reward. Try again in about **${remaining}** hour(s).`)
+                .setTitle('📅 Daily Reward')
+                .setDescription(`You've already claimed your reward! Come back in **${remaining}** hour(s).`)
                 .setColor(getEmbedColor(user));
             await message.reply({ embeds: [embed] });
         } else {
@@ -178,8 +180,8 @@ client.on('messageCreate', async message => {
             user.lastDaily = now;
             setUserData(message.author.id, user);
             const embed = new EmbedBuilder()
-                .setTitle('Daily Reward')
-                .setDescription(`You collected **${amount}** coins!`)
+                .setTitle('📅 Daily Reward')
+                .setDescription(`You collected **${amount}** coins! See you tomorrow!`)
                 .setColor(getEmbedColor(user));
             await message.reply({ embeds: [embed] });
         }
@@ -189,7 +191,7 @@ client.on('messageCreate', async message => {
         user.wallet += amount;
         setUserData(message.author.id, user);
         const embed = new EmbedBuilder()
-            .setTitle('Begging')
+            .setTitle('🙏 Begging')
             .setDescription(`Someone felt generous and gave you **${amount}** coins.`)
             .setColor(getEmbedColor(user));
         await message.reply({ embeds: [embed] });
@@ -210,7 +212,7 @@ client.on('messageCreate', async message => {
 
         if (!user.inventory[itemKey]) {
             const embed = new EmbedBuilder()
-                .setTitle('Missing Item')
+                .setTitle('⚠️ Missing Item')
                 .setDescription(`You need a **${shopItems[itemKey].name}** to start ${action}. Check the shop!`)
                 .setColor(getEmbedColor(user));
             await message.reply({ embeds: [embed] });
@@ -220,8 +222,9 @@ client.on('messageCreate', async message => {
         const amount = Math.floor(Math.random() * 75) + 25;
         user.wallet += amount;
         setUserData(message.author.id, user);
+        const emojis = { digging: '⛏️', hunting: '🏹', fishing: '🎣' };
         const embed = new EmbedBuilder()
-            .setTitle(`${action.charAt(0).toUpperCase() + action.slice(1)}`)
+            .setTitle(`${emojis[action]} ${action.charAt(0).toUpperCase() + action.slice(1)}`)
             .setDescription(`You earned **${amount}** coins by ${action}!`)
             .setColor(getEmbedColor(user));
         await message.reply({ embeds: [embed] });
@@ -232,7 +235,7 @@ client.on('messageCreate', async message => {
             const shopItem = shopItems[item];
             if (!shopItem) {
                 const embed = new EmbedBuilder()
-                    .setTitle('Shop')
+                    .setTitle('🛒 Shop')
                     .setDescription('Item not found.')
                     .setColor(getEmbedColor(user));
                 await message.reply({ embeds: [embed] });
@@ -240,7 +243,7 @@ client.on('messageCreate', async message => {
             }
             if (user.wallet < shopItem.price) {
                 const embed = new EmbedBuilder()
-                    .setTitle('Shop')
+                    .setTitle('🛒 Shop')
                     .setDescription(`You don't have enough coins for a **${shopItem.name}**.`)
                     .setColor(getEmbedColor(user));
                 await message.reply({ embeds: [embed] });
@@ -250,7 +253,7 @@ client.on('messageCreate', async message => {
             user.inventory[item] = true;
             setUserData(message.author.id, user);
             const embed = new EmbedBuilder()
-                .setTitle('Shop')
+                .setTitle('🛒 Shop')
                 .setDescription(`You bought a **${shopItem.name}** for **${shopItem.price}** coins.`)
                 .setColor(getEmbedColor(user));
             await message.reply({ embeds: [embed] });
@@ -259,7 +262,7 @@ client.on('messageCreate', async message => {
                 .map(([k, v]) => `**${v.name}** - ${v.price} coins`)
                 .join('\n');
             const embed = new EmbedBuilder()
-                .setTitle('Shop Items')
+                .setTitle('🛒 Shop Items')
                 .setDescription(desc)
                 .setFooter({ text: `Use =shop buy <item>` })
                 .setColor(getEmbedColor(user));
@@ -273,7 +276,7 @@ client.on('messageCreate', async message => {
             .addOptions(colorOptions);
         const row = new ActionRowBuilder().addComponents(menu);
         const embed = new EmbedBuilder()
-            .setTitle('Choose your embed color')
+            .setTitle('🎨 Choose your embed color')
             .setColor(getEmbedColor(user));
         await message.reply({ embeds: [embed], components: [row] });
     } else if (command === 'job') {
@@ -283,7 +286,7 @@ client.on('messageCreate', async message => {
             const job = jobs.find(j => j.id === input || j.name.toLowerCase() === input);
             if (!job) {
                 const embed = new EmbedBuilder()
-                    .setTitle('Job')
+                    .setTitle('💼 Job')
                     .setDescription('Job not found. Use `=job` to view available jobs.')
                     .setColor(getEmbedColor(user));
                 await message.reply({ embeds: [embed] });
@@ -292,7 +295,7 @@ client.on('messageCreate', async message => {
                 if (job.id === 'legend') {
                     if (!jobs.slice(0, -1).every(j => (user.jobLevels[j.id] || 0) >= 100)) {
                         const embed = new EmbedBuilder()
-                            .setTitle('Job')
+                            .setTitle('💼 Job')
                             .setDescription('You must reach level 100 in all jobs to apply for Legend.')
                             .setColor(getEmbedColor(user));
                         await message.reply({ embeds: [embed] });
@@ -302,7 +305,7 @@ client.on('messageCreate', async message => {
                     const prev = jobs[index - 1];
                     if ((user.jobLevels[prev.id] || 0) < 100) {
                         const embed = new EmbedBuilder()
-                            .setTitle('Job')
+                            .setTitle('💼 Job')
                             .setDescription(`You need level 100 in ${prev.name} first.`)
                             .setColor(getEmbedColor(user));
                         await message.reply({ embeds: [embed] });
@@ -315,7 +318,7 @@ client.on('messageCreate', async message => {
                 }
                 setUserData(message.author.id, user);
                 const embed = new EmbedBuilder()
-                    .setTitle('Job')
+                    .setTitle('💼 Job')
                     .setDescription(`You applied to ${job.name}!`)
                     .setColor(getEmbedColor(user));
                 await message.reply({ embeds: [embed] });
@@ -335,7 +338,7 @@ client.on('messageCreate', async message => {
                 .addOptions(available.map(j => ({ label: j.name, value: j.id })));
             const row = new ActionRowBuilder().addComponents(menu);
             const embed = new EmbedBuilder()
-                .setTitle('Available Jobs')
+                .setTitle('💼 Available Jobs')
                 .setColor(getEmbedColor(user));
             await message.reply({ embeds: [embed], components: [row] });
         }
@@ -343,7 +346,7 @@ client.on('messageCreate', async message => {
         const user = getUserData(message.author.id);
         if (!user.currentJob) {
             const embed = new EmbedBuilder()
-                .setTitle('Job')
+                .setTitle('💼 Job')
                 .setDescription('Apply for a job first using =job')
                 .setColor(getEmbedColor(user));
             await message.reply({ embeds: [embed] });
@@ -356,7 +359,7 @@ client.on('messageCreate', async message => {
             user.wallet += amount;
             setUserData(message.author.id, user);
             const embed = new EmbedBuilder()
-                .setTitle(`Working as ${jobs.find(j => j.id === user.currentJob).name}`)
+                .setTitle(`💼 Working as ${jobs.find(j => j.id === user.currentJob).name}`)
                 .setDescription(`You earned **${amount}** coins. Job level: ${user.jobLevels[user.currentJob]}`)
                 .setColor(getEmbedColor(user));
             await message.reply({ embeds: [embed] });
@@ -376,7 +379,7 @@ client.on('messageCreate', async message => {
         }).map(j => j.name).join(', ') || 'None';
 
         const embed = new EmbedBuilder()
-            .setTitle('Levels')
+            .setTitle('📊 Levels')
             .setDescription(`Current Job: ${currentJob ? currentJob.name : 'None'}\nCurrent Level: ${currentLevel}\nTotal Level: ${totalLevel}\nUnlocked Jobs: ${unlocked}`)
             .setColor(getEmbedColor(user));
         await message.reply({ embeds: [embed] });
@@ -386,7 +389,29 @@ client.on('messageCreate', async message => {
             const user = getUserData(message.author.id);
             user.wallet += amount;
             setUserData(message.author.id, user);
-            await message.reply({ content: `Added ${amount} coins to your wallet.` });
+            await message.reply({ content: `Added ${amount} coins to your wallet. 💸` });
+        }
+    } else if (command === 'levelset' && args[0]) {
+        const amount = parseInt(args[0], 10);
+        if (!isNaN(amount)) {
+            const user = getUserData(message.author.id);
+            if (user.currentJob) {
+                user.jobLevels[user.currentJob] = amount;
+                setUserData(message.author.id, user);
+                await message.reply({ content: `Set **${jobs.find(j => j.id === user.currentJob).name}** level to ${amount}. 📈` });
+            } else {
+                await message.reply({ content: 'You do not have a job selected.' });
+            }
+        }
+    } else if (command === 'levelsetall' && args[0]) {
+        const amount = parseInt(args[0], 10);
+        if (!isNaN(amount)) {
+            const user = getUserData(message.author.id);
+            for (const j of jobs) {
+                user.jobLevels[j.id] = amount;
+            }
+            setUserData(message.author.id, user);
+            await message.reply({ content: `Set all job levels to ${amount}. 📈` });
         }
     } else if (command === 'control') {
         const amount = parseInt(args[0], 10) || 1;
@@ -395,20 +420,12 @@ client.on('messageCreate', async message => {
             .setCustomId(`control_item_${message.author.id}_${amount}`)
             .setPlaceholder('Select an item')
             .addOptions(Object.entries(shopItems).map(([k, v]) => ({ label: v.name, value: k })));
-        const levelMenu = new StringSelectMenuBuilder()
-            .setCustomId(`control_level_${message.author.id}_${amount}`)
-            .setPlaceholder('Set job level')
-            .addOptions([
-                { label: 'Current Job', value: 'current' },
-                { label: 'All Jobs', value: 'all' },
-            ]);
-        const row1 = new ActionRowBuilder().addComponents(itemMenu);
-        const row2 = new ActionRowBuilder().addComponents(levelMenu);
+        const row = new ActionRowBuilder().addComponents(itemMenu);
         const embed = new EmbedBuilder()
-            .setTitle('Control Panel')
-            .setDescription('Choose an item or job level option. Type `=givemoney <amount>` to add coins.')
+            .setTitle('🛠️ Control Panel')
+            .setDescription('Choose an item to add. Use `=givemoney`, `=levelset`, or `=levelsetall` for other actions.')
             .setColor(getEmbedColor(user));
-        await message.reply({ embeds: [embed], components: [row1, row2] });
+        await message.reply({ embeds: [embed], components: [row] });
     } else if (command === 'help') {
         const user = getUserData(message.author.id);
         const categories = {};
@@ -417,10 +434,11 @@ client.on('messageCreate', async message => {
             categories[info.category].push(`**=${info.name}** - ${info.description}`);
         }
         const embed = new EmbedBuilder()
-            .setTitle('Help')
+            .setTitle('📖 Help Menu')
+            .setDescription('Here are my commands!')
             .setColor(getEmbedColor(user));
         Object.keys(categories).sort().forEach(cat => {
-            embed.addFields({ name: cat, value: categories[cat].join('\n') });
+            embed.addFields({ name: cat, value: categories[cat].join('\n'), inline: true });
         });
         await message.reply({ embeds: [embed] });
     }
@@ -438,8 +456,8 @@ client.on('interactionCreate', async interaction => {
         const ping = wsPing >= 0 ? wsPing : Date.now() - interaction.createdTimestamp;
         const user = getUserData(interaction.user.id);
         const embed = new EmbedBuilder()
-            .setTitle('Pong!')
-            .setDescription(`Current latency: ${ping}ms`)
+            .setTitle('🏓 Pong!')
+            .setDescription(`Current latency: **${ping}ms**`)
             .setColor(getEmbedColor(user))
             .setFooter({ text: `Clicks: ${count}` });
 
@@ -459,7 +477,7 @@ client.on('interactionCreate', async interaction => {
             user.color = choice === 'random' ? 'random' : parseInt(choice, 10);
             setUserData(interaction.user.id, user);
             const label = colorOptions.find(o => o.value === choice)?.label || 'custom';
-            await interaction.reply({ content: `Embed color updated to ${label}` , ephemeral: true });
+            await interaction.reply({ content: `🎨 Embed color updated to ${label}` , ephemeral: true });
         } else if (customId.startsWith('jobselect_')) {
             const jobId = values[0];
             const user = getUserData(interaction.user.id);
@@ -471,18 +489,18 @@ client.on('interactionCreate', async interaction => {
                 user.jobLevels[jobId] = 0;
             }
             setUserData(interaction.user.id, user);
-            await interaction.reply({ content: `You applied to ${jobs.find(j => j.id === jobId).name}!`, ephemeral: true });
+            await interaction.reply({ content: `💼 You applied to ${jobs.find(j => j.id === jobId).name}!`, ephemeral: true });
         } else if (customId.startsWith('control_item_')) {
-            const [, userId, amountStr] = customId.split('_');
+            const [, , userId, amountStr] = customId.split('_');
             if (interaction.user.id !== userId) return;
             const amount = parseInt(amountStr, 10) || 1;
             const item = values[0];
             const user = getUserData(interaction.user.id);
             user.inventory[item] = true;
             setUserData(interaction.user.id, user);
-            await interaction.reply({ content: `Gave you ${amount}x ${shopItems[item].name}.`, ephemeral: true });
+            await interaction.reply({ content: `🛠️ Gave you ${amount}x ${shopItems[item].name}.`, ephemeral: true });
         } else if (customId.startsWith('control_level_')) {
-            const [, userId, amountStr] = customId.split('_');
+            const [, , userId, amountStr] = customId.split('_');
             if (interaction.user.id !== userId) return;
             const amount = parseInt(amountStr, 10) || 1;
             const option = values[0];
@@ -495,7 +513,7 @@ client.on('interactionCreate', async interaction => {
                 }
             }
             setUserData(interaction.user.id, user);
-            await interaction.reply({ content: 'Job levels updated.', ephemeral: true });
+            await interaction.reply({ content: '📈 Job levels updated.', ephemeral: true });
         }
     }
 });
