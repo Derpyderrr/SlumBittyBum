@@ -17,5 +17,5 @@ Economy Discord bot with customizable embed colors, a job system and more.
 - `=dig`, `=fish`, `=hunt` &mdash; Use tools to earn coins and random loot. Tools have limited durability.
 - `=shop` &mdash; View or buy items including new lootboxes.
 - `=inventory` &mdash; View items you own.
-- `=open <lootbox>` &mdash; Open a lootbox for coins and loot.
+- `=open <basic|rare|epic>` &mdash; Open one of your lootboxes.
 - `=sell <item> [amount]` &mdash; Sell items from your inventory.

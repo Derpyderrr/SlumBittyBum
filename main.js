@@ -352,21 +352,39 @@ client.on('messageCreate', async message => {
             .setDescription(lines)
             .setColor(getEmbedColor(user));
         await message.reply({ embeds: [embed] });
-    } else if (command === 'open' && args[0]) {
-        const box = args[0].toLowerCase();
+    } else if (command === 'open') {
         const user = getUserData(message.author.id);
+        if (!args[0]) {
+            const basic = user.inventory['lootbox_basic']?.count || 0;
+            const rare = user.inventory['lootbox_rare']?.count || 0;
+            const epic = user.inventory['lootbox_epic']?.count || 0;
+            await message.reply({
+                content: `Specify a lootbox to open: **basic**, **rare**, or **epic**.\nYou have Basic x${basic}, Rare x${rare}, Epic x${epic}.`
+            });
+            return;
+        }
+
+        let box = args[0].toLowerCase();
+        if (['basic', 'rare', 'epic'].includes(box)) {
+            box = `lootbox_${box}`;
+        }
+
         const entry = user.inventory[box];
         if (!entry || entry.count < 1 || !box.startsWith('lootbox')) {
             await message.reply({ content: 'You do not have that lootbox.' });
             return;
         }
+
         entry.count -= 1;
         if (entry.count <= 0) delete user.inventory[box];
+
         let coins = 0;
         if (box === 'lootbox_basic') coins = Math.floor(Math.random() * 100) + 50;
         else if (box === 'lootbox_rare') coins = Math.floor(Math.random() * 200) + 100;
         else if (box === 'lootbox_epic') coins = Math.floor(Math.random() * 400) + 200;
+
         user.wallet += coins;
+
         const loot = [];
         for (const tbl of Object.values(lootTables)) {
             for (const l of tbl) {
@@ -377,6 +395,7 @@ client.on('messageCreate', async message => {
                 }
             }
         }
+
         setUserData(message.author.id, user);
         const lootText = loot.length ? ` You also received: ${loot.join(', ')}.` : '';
         await message.reply({ content: `You opened a ${shopItems[box].name} and received ${coins} coins!${lootText}` });
