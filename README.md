@@ -19,4 +19,4 @@ Economy Discord bot with customizable embed colors, a job system and more.
 - `=inventory` &mdash; View items you own.
 - `=open <basic|rare|epic>` &mdash; Open one of your lootboxes.
 - `=sell <item> [amount]` &mdash; Sell items from your inventory.
-- `=lootpool <command>` &mdash; Show the loot table for a command.
+- `=lootpool <command>` &mdash; Show the loot table for a command and possible coin rewards.
