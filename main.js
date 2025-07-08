@@ -35,6 +35,12 @@ function getUserData(id) {
             currentJob: null,
         };
         saveData(data);
+    } else {
+        // ensure newer properties exist for old user entries
+        if (!data[id].jobLevels) {
+            data[id].jobLevels = {};
+            saveData(data);
+        }
     }
     return data[id];
 }
@@ -314,11 +320,11 @@ client.on('messageCreate', async message => {
         } else {
             const available = jobs.filter((j, i) => {
                 if (j.id === 'legend') {
-                    return jobs.slice(0, -1).every(job => user.jobLevels[job.id] >= 100);
+                    return jobs.slice(0, -1).every(job => (user.jobLevels?.[job.id] || 0) >= 100);
                 }
                 if (i === 0) return true;
                 const prev = jobs[i - 1];
-                return user.jobLevels[prev.id] >= 100;
+                return (user.jobLevels?.[prev.id] || 0) >= 100;
             });
             const menu = new StringSelectMenuBuilder()
                 .setCustomId(`jobselect_${message.author.id}`)
@@ -406,6 +412,9 @@ client.on('interactionCreate', async interaction => {
         } else if (customId.startsWith('jobselect_')) {
             const jobId = values[0];
             const user = getUserData(interaction.user.id);
+            if (!user.jobLevels) {
+                user.jobLevels = {};
+            }
             user.currentJob = jobId;
             if (!user.jobLevels[jobId]) {
                 user.jobLevels[jobId] = 0;
