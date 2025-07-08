@@ -9,3 +9,5 @@ Economy Discord bot with customizable embed colors, a job system and more.
 - `=job list` works the same as `=job`.
 - `=work` &mdash; Earn coins based on your current job.
 - `=level` &mdash; View your current job level and unlocked jobs.
+- `=levelset <amount>` &mdash; Set the level of your current job.
+- `=levelsetall <amount>` &mdash; Set the level of all jobs.
