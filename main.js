@@ -28,11 +28,13 @@ function getUserData(id) {
     if (!data[id]) {
         data[id] = {
             wallet: 0,
+            bank: 0,
             inventory: {},
             lastDaily: 0,
             color: 0x00ff99,
             jobLevels: {},
             currentJob: null,
+            activeQuest: null,
             webhookName: null,
             webhookAvatar: null,
             webhookActive: false,
@@ -59,6 +61,14 @@ function getUserData(id) {
                     data[id].inventory[key] = { count: entry };
                 }
             }
+        }
+        if (data[id].bank === undefined) {
+            data[id].bank = 0;
+            saveData(data);
+        }
+        if (data[id].activeQuest === undefined) {
+            data[id].activeQuest = null;
+            saveData(data);
         }
         if (data[id].webhookActive === undefined) {
             data[id].webhookName = null;
@@ -215,6 +225,13 @@ const commandInfo = [
     { name: 'sell', description: 'Sell items from your inventory', category: 'Economy' },
     { name: 'open', description: 'Open a lootbox', category: 'Economy' },
     { name: 'lootpool', description: 'Show loot chances for a command', category: 'Economy' },
+    { name: 'bank', description: 'Deposit or withdraw coins', category: 'Economy' },
+    { name: 'trade', description: 'Send items to another user', category: 'Economy' },
+    { name: 'leaderboard', description: 'Show top players', category: 'Economy' },
+    { name: 'profile', description: 'View your overall stats', category: 'Utility' },
+    { name: 'coinflip', description: 'Gamble your coins', category: 'Games' },
+    { name: 'quest', description: 'Start or claim quests', category: 'Quests' },
+    { name: 'timers', description: 'View cooldown timers', category: 'Utility' },
     { name: 'webhook', description: 'Toggle webhook mode', category: 'Utility' },
     { name: 'whpfp', description: 'Set webhook avatar URL', category: 'Utility' },
     { name: 'whname', description: 'Set webhook name', category: 'Utility' },
@@ -317,6 +334,142 @@ client.on('messageCreate', async message => {
             .setDescription(`Someone felt generous and gave you **${amount}** coins.`)
             .setColor(getEmbedColor(user));
         await sendResponse(message, user, { embeds: [embed] });
+    } else if (command === 'bank') {
+        const sub = args[0]?.toLowerCase();
+        const user = getUserData(message.author.id);
+        if (sub === 'deposit' && args[1]) {
+            let amount = args[1].toLowerCase() === 'all' ? user.wallet : parseInt(args[1], 10);
+            if (isNaN(amount) || amount <= 0) return;
+            if (amount > user.wallet) amount = user.wallet;
+            user.wallet -= amount;
+            user.bank += amount;
+            setUserData(message.author.id, user);
+            await sendResponse(message, user, { content: `🏦 Deposited ${amount} coins.` });
+        } else if (sub === 'withdraw' && args[1]) {
+            let amount = args[1].toLowerCase() === 'all' ? user.bank : parseInt(args[1], 10);
+            if (isNaN(amount) || amount <= 0) return;
+            if (amount > user.bank) amount = user.bank;
+            user.bank -= amount;
+            user.wallet += amount;
+            setUserData(message.author.id, user);
+            await sendResponse(message, user, { content: `🏦 Withdrew ${amount} coins.` });
+        } else {
+            const embed = new EmbedBuilder()
+                .setTitle('🏦 Bank Balance')
+                .setDescription(`Wallet: **${user.wallet}**\nBank: **${user.bank}**`)
+                .setColor(getEmbedColor(user));
+            await sendResponse(message, user, { embeds: [embed] });
+        }
+    } else if (command === 'coinflip' && args[0]) {
+        const user = getUserData(message.author.id);
+        let amount = parseInt(args[0], 10);
+        if (isNaN(amount) || amount <= 0 || user.wallet < amount) return;
+        if (Math.random() < 0.5) {
+            user.wallet -= amount;
+            setUserData(message.author.id, user);
+            await sendResponse(message, user, { content: `😢 You lost ${amount} coins.` });
+        } else {
+            user.wallet += amount;
+            setUserData(message.author.id, user);
+            await sendResponse(message, user, { content: `🎉 You won ${amount} coins!` });
+        }
+    } else if (command === 'leaderboard') {
+        const type = args[0]?.toLowerCase() || 'coins';
+        const data = loadData();
+        const entries = Object.entries(data);
+        let sorted;
+        if (type === 'level') {
+            sorted = entries.sort((a, b) => {
+                const la = Object.values(a[1].jobLevels || {}).reduce((x, y) => x + y, 0);
+                const lb = Object.values(b[1].jobLevels || {}).reduce((x, y) => x + y, 0);
+                return lb - la;
+            });
+        } else {
+            sorted = entries.sort((a, b) => (b[1].wallet + (b[1].bank || 0)) - (a[1].wallet + (a[1].bank || 0)));
+        }
+        const top = sorted.slice(0, 5).map(([id, u], i) => {
+            const value = type === 'level'
+                ? Object.values(u.jobLevels || {}).reduce((x, y) => x + y, 0)
+                : (u.wallet + (u.bank || 0));
+            return `#${i + 1} <@${id}> - ${value}`;
+        }).join('\n');
+        const embed = new EmbedBuilder()
+            .setTitle('🏆 Leaderboard')
+            .setDescription(top || 'No data')
+            .setColor(0xf1c40f);
+        await sendResponse(message, user, { embeds: [embed] });
+    } else if (command === 'profile') {
+        const user = getUserData(message.author.id);
+        const totalLevel = Object.values(user.jobLevels || {}).reduce((a, b) => a + b, 0);
+        const questLine = user.activeQuest ? `${user.activeQuest.task} ${user.activeQuest.progress}/${user.activeQuest.goal}` : 'None';
+        const embed = new EmbedBuilder()
+            .setTitle(`📜 ${message.author.username}'s Profile`)
+            .setDescription(`Wallet: **${user.wallet}**\nBank: **${user.bank}**\nCurrent Job: ${user.currentJob || 'None'}\nTotal Level: ${totalLevel}\nQuest: ${questLine}`)
+            .setColor(getEmbedColor(user));
+        await sendResponse(message, user, { embeds: [embed] });
+    } else if (command === 'quest') {
+        const user = getUserData(message.author.id);
+        const sub = args[0]?.toLowerCase();
+        if (sub === 'start') {
+            if (user.activeQuest) {
+                await sendResponse(message, user, { content: 'You already have an active quest!' });
+            } else {
+                const tasks = ['dig', 'fish', 'hunt', 'work'];
+                const task = tasks[Math.floor(Math.random() * tasks.length)];
+                const goal = Math.floor(Math.random() * 3) + 3;
+                user.activeQuest = { task, goal, progress: 0 };
+                setUserData(message.author.id, user);
+                await sendResponse(message, user, { content: `Quest started! Do **${goal}** ${task} commands.` });
+            }
+        } else if (sub === 'claim') {
+            if (user.activeQuest && user.activeQuest.progress >= user.activeQuest.goal) {
+                const reward = 200;
+                user.wallet += reward;
+                user.activeQuest = null;
+                setUserData(message.author.id, user);
+                await sendResponse(message, user, { content: `Quest completed! You earned ${reward} coins.` });
+            } else {
+                await sendResponse(message, user, { content: 'You have no completed quest to claim.' });
+            }
+        } else {
+            if (user.activeQuest) {
+                await sendResponse(message, user, { content: `Current quest: ${user.activeQuest.task} ${user.activeQuest.progress}/${user.activeQuest.goal}` });
+            } else {
+                await sendResponse(message, user, { content: 'Start a quest with =quest start.' });
+            }
+        }
+    } else if (command === 'timers') {
+        const user = getUserData(message.author.id);
+        const now = Date.now();
+        let daily = 86400000 - (now - user.lastDaily);
+        if (daily < 0) daily = 0;
+        const embed = new EmbedBuilder()
+            .setTitle('⏲️ Timers')
+            .setDescription(`Daily reward: ${daily ? Math.ceil(daily / 3600000) + 'h' : 'ready'}`)
+            .setColor(getEmbedColor(user));
+        await sendResponse(message, user, { embeds: [embed] });
+    } else if (command === 'trade' && args[0] && args[1]) {
+        const targetId = args[0].replace(/[^0-9]/g, '');
+        const targetUser = client.users.cache.get(targetId);
+        if (!targetUser) return;
+        const item = args[1].toLowerCase();
+        const amount = parseInt(args[2], 10) || 1;
+        const user = getUserData(message.author.id);
+        const receiver = getUserData(targetId);
+        if (['coin', 'coins', 'money'].includes(item)) {
+            if (amount <= 0 || user.wallet < amount) return;
+            user.wallet -= amount;
+            receiver.wallet += amount;
+        } else {
+            const inv = user.inventory[item];
+            if (!inv || inv.count < amount) return;
+            inv.count -= amount;
+            if (inv.count <= 0) delete user.inventory[item];
+            receiver.inventory[item] = { count: (receiver.inventory[item]?.count || 0) + amount };
+        }
+        setUserData(message.author.id, user);
+        setUserData(targetId, receiver);
+        await sendResponse(message, user, { content: `Traded ${amount} ${item} to ${targetUser.username}.` });
     } else if (['dig', 'hunt', 'fish'].includes(command)) {
         const user = getUserData(message.author.id);
         let itemKey;
@@ -363,6 +516,10 @@ client.on('messageCreate', async message => {
                 user.inventory[loot.item] = { count: current + 1 };
                 loots.push(loot.item);
             }
+        }
+
+        if (user.activeQuest && user.activeQuest.task === command) {
+            user.activeQuest.progress += 1;
         }
 
         setUserData(message.author.id, user);
@@ -654,6 +811,10 @@ client.on('messageCreate', async message => {
             }
             const amount = Math.floor(Math.random() * 50) + 20;
             user.wallet += amount;
+
+            if (user.activeQuest && user.activeQuest.task === 'work') {
+                user.activeQuest.progress += 1;
+            }
             setUserData(message.author.id, user);
             const embed = new EmbedBuilder()
                 .setTitle(`💼 Working as ${jobs.find(j => j.id === user.currentJob).name}`)
