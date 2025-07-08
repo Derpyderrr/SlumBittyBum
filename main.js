@@ -41,6 +41,19 @@ function getUserData(id) {
             data[id].jobLevels = {};
             saveData(data);
         }
+        if (!data[id].inventory) {
+            data[id].inventory = {};
+            saveData(data);
+        } else {
+            for (const key of Object.keys(data[id].inventory)) {
+                const entry = data[id].inventory[key];
+                if (entry === true) {
+                    data[id].inventory[key] = { count: 1 };
+                } else if (typeof entry === 'number') {
+                    data[id].inventory[key] = { count: entry };
+                }
+            }
+        }
     }
     return data[id];
 }
@@ -60,9 +73,36 @@ function getEmbedColor(user) {
 }
 
 const shopItems = {
-    shovel: { price: 50, name: 'Shovel' },
-    rifle: { price: 250, name: 'Hunting Rifle' },
-    rod: { price: 100, name: 'Fishing Rod' },
+    shovel: { price: 50, name: 'Shovel', durability: 10 },
+    rifle: { price: 250, name: 'Hunting Rifle', durability: 10 },
+    rod: { price: 100, name: 'Fishing Rod', durability: 10 },
+    lootbox_basic: { price: 150, name: 'Basic Lootbox' },
+    lootbox_rare: { price: 400, name: 'Rare Lootbox' },
+    lootbox_epic: { price: 800, name: 'Epic Lootbox' },
+};
+
+const lootTables = {
+    dig: [
+        { item: 'ore', chance: 0.2 },
+        { item: 'gem', chance: 0.05 },
+    ],
+    hunt: [
+        { item: 'pelt', chance: 0.25 },
+        { item: 'rare_pelt', chance: 0.05 },
+    ],
+    fish: [
+        { item: 'fish', chance: 0.25 },
+        { item: 'rare_fish', chance: 0.05 },
+    ],
+};
+
+const sellPrices = {
+    ore: 30,
+    gem: 100,
+    pelt: 25,
+    rare_pelt: 80,
+    fish: 20,
+    rare_fish: 60,
 };
 
 const colorOptions = [
@@ -104,6 +144,9 @@ const commandInfo = [
     { name: 'hunt', description: 'Hunt for coins', category: 'Economy' },
     { name: 'fish', description: 'Fish for coins', category: 'Economy' },
     { name: 'shop', description: 'View or buy shop items', category: 'Economy' },
+    { name: 'inventory', description: 'View your items', category: 'Economy' },
+    { name: 'sell', description: 'Sell items from your inventory', category: 'Economy' },
+    { name: 'open', description: 'Open a lootbox', category: 'Economy' },
     { name: 'embedcolor', description: 'Change embed color', category: 'Utility' },
     { name: 'job', description: 'Apply for a job (use `=job list` to view)', category: 'Jobs' },
     { name: 'work', description: 'Work at your current job', category: 'Jobs' },
@@ -210,7 +253,8 @@ client.on('messageCreate', async message => {
             action = 'fishing';
         }
 
-        if (!user.inventory[itemKey]) {
+        const tool = user.inventory[itemKey];
+        if (!tool || (tool.durability !== undefined && tool.durability <= 0)) {
             const embed = new EmbedBuilder()
                 .setTitle('⚠️ Missing Item')
                 .setDescription(`You need a **${shopItems[itemKey].name}** to start ${action}. Check the shop!`)
@@ -219,13 +263,35 @@ client.on('messageCreate', async message => {
             return;
         }
 
+        // decrease durability and handle break chance
+        if (tool.durability !== undefined) {
+            tool.durability -= 1;
+            if (Math.random() < 0.1 || tool.durability <= 0) {
+                delete user.inventory[itemKey];
+            } else {
+                user.inventory[itemKey] = tool;
+            }
+        }
+
         const amount = Math.floor(Math.random() * 75) + 25;
         user.wallet += amount;
+
+        // loot items
+        const loots = [];
+        for (const loot of lootTables[command]) {
+            if (Math.random() < loot.chance) {
+                const current = user.inventory[loot.item]?.count || 0;
+                user.inventory[loot.item] = { count: current + 1 };
+                loots.push(loot.item);
+            }
+        }
+
         setUserData(message.author.id, user);
         const emojis = { digging: '⛏️', hunting: '🏹', fishing: '🎣' };
+        const lootText = loots.length > 0 ? `\nYou also found: ${loots.join(', ')}.` : '';
         const embed = new EmbedBuilder()
             .setTitle(`${emojis[action]} ${action.charAt(0).toUpperCase() + action.slice(1)}`)
-            .setDescription(`You earned **${amount}** coins by ${action}!`)
+            .setDescription(`You earned **${amount}** coins by ${action}!${lootText}`)
             .setColor(getEmbedColor(user));
         await message.reply({ embeds: [embed] });
     } else if (command === 'shop') {
@@ -250,7 +316,12 @@ client.on('messageCreate', async message => {
                 return;
             }
             user.wallet -= shopItem.price;
-            user.inventory[item] = true;
+            if (shopItem.durability) {
+                user.inventory[item] = { count: 1, durability: shopItem.durability };
+            } else {
+                const current = user.inventory[item]?.count || 0;
+                user.inventory[item] = { count: current + 1 };
+            }
             setUserData(message.author.id, user);
             const embed = new EmbedBuilder()
                 .setTitle('🛒 Shop')
@@ -268,6 +339,66 @@ client.on('messageCreate', async message => {
                 .setColor(getEmbedColor(user));
             await message.reply({ embeds: [embed] });
         }
+    } else if (command === 'inventory') {
+        const user = getUserData(message.author.id);
+        const lines = Object.entries(user.inventory).map(([k,v]) => {
+            if (v.durability !== undefined) {
+                return `**${shopItems[k]?.name || k}** - durability ${v.durability}`;
+            }
+            return `**${shopItems[k]?.name || k}** x${v.count}`;
+        }).join('\n') || 'Empty';
+        const embed = new EmbedBuilder()
+            .setTitle(`🎒 ${message.author.username}'s Inventory`)
+            .setDescription(lines)
+            .setColor(getEmbedColor(user));
+        await message.reply({ embeds: [embed] });
+    } else if (command === 'open' && args[0]) {
+        const box = args[0].toLowerCase();
+        const user = getUserData(message.author.id);
+        const entry = user.inventory[box];
+        if (!entry || entry.count < 1 || !box.startsWith('lootbox')) {
+            await message.reply({ content: 'You do not have that lootbox.' });
+            return;
+        }
+        entry.count -= 1;
+        if (entry.count <= 0) delete user.inventory[box];
+        let coins = 0;
+        if (box === 'lootbox_basic') coins = Math.floor(Math.random() * 100) + 50;
+        else if (box === 'lootbox_rare') coins = Math.floor(Math.random() * 200) + 100;
+        else if (box === 'lootbox_epic') coins = Math.floor(Math.random() * 400) + 200;
+        user.wallet += coins;
+        const loot = [];
+        for (const tbl of Object.values(lootTables)) {
+            for (const l of tbl) {
+                if (Math.random() < 0.1) {
+                    const current = user.inventory[l.item]?.count || 0;
+                    user.inventory[l.item] = { count: current + 1 };
+                    loot.push(l.item);
+                }
+            }
+        }
+        setUserData(message.author.id, user);
+        const lootText = loot.length ? ` You also received: ${loot.join(', ')}.` : '';
+        await message.reply({ content: `You opened a ${shopItems[box].name} and received ${coins} coins!${lootText}` });
+    } else if (command === 'sell' && args[0]) {
+        const item = args[0].toLowerCase();
+        const amount = parseInt(args[1], 10) || 1;
+        const user = getUserData(message.author.id);
+        const inv = user.inventory[item];
+        if (!inv || inv.count < amount || inv.durability !== undefined) {
+            await message.reply({ content: 'You do not have enough of that item to sell.' });
+            return;
+        }
+        const price = (shopItems[item]?.price / 2) || sellPrices[item];
+        if (!price) {
+            await message.reply({ content: 'That item cannot be sold.' });
+            return;
+        }
+        inv.count -= amount;
+        if (inv.count <= 0) delete user.inventory[item];
+        user.wallet += price * amount;
+        setUserData(message.author.id, user);
+        await message.reply({ content: `Sold ${amount} ${item} for ${price * amount} coins.` });
     } else if (command === 'embedcolor') {
         const user = getUserData(message.author.id);
         const menu = new StringSelectMenuBuilder()
@@ -496,7 +627,12 @@ client.on('interactionCreate', async interaction => {
             const amount = parseInt(amountStr, 10) || 1;
             const item = values[0];
             const user = getUserData(interaction.user.id);
-            user.inventory[item] = true;
+            if (shopItems[item]?.durability) {
+                user.inventory[item] = { count: 1, durability: shopItems[item].durability };
+            } else {
+                const current = user.inventory[item]?.count || 0;
+                user.inventory[item] = { count: current + amount };
+            }
             setUserData(interaction.user.id, user);
             await interaction.reply({ content: `🛠️ Gave you ${amount}x ${shopItems[item].name}.`, ephemeral: true });
         } else if (customId.startsWith('control_level_')) {

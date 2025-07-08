@@ -11,3 +11,11 @@ Economy Discord bot with customizable embed colors, a job system and more.
 - `=level` &mdash; View your current job level and unlocked jobs.
 - `=levelset <amount>` &mdash; Set the level of your current job.
 - `=levelsetall <amount>` &mdash; Set the level of all jobs.
+
+### Economy Commands
+
+- `=dig`, `=fish`, `=hunt` &mdash; Use tools to earn coins and random loot. Tools have limited durability.
+- `=shop` &mdash; View or buy items including new lootboxes.
+- `=inventory` &mdash; View items you own.
+- `=open <lootbox>` &mdash; Open a lootbox for coins and loot.
+- `=sell <item> [amount]` &mdash; Sell items from your inventory.
