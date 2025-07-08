@@ -107,6 +107,9 @@ const commandInfo = [
     { name: 'embedcolor', description: 'Change embed color', category: 'Utility' },
     { name: 'job', description: 'Apply for a job (use `=job list` to view)', category: 'Jobs' },
     { name: 'work', description: 'Work at your current job', category: 'Jobs' },
+    { name: 'level', description: 'Show your job levels', category: 'Jobs' },
+    { name: 'control', description: 'Admin controls for testing', category: 'Admin' },
+    { name: 'givemoney', description: 'Add coins to your wallet', category: 'Admin' },
     { name: 'help', description: 'Show this help message', category: 'Utility' },
 ];
 
@@ -358,6 +361,54 @@ client.on('messageCreate', async message => {
                 .setColor(getEmbedColor(user));
             await message.reply({ embeds: [embed] });
         }
+    } else if (command === 'level') {
+        const user = getUserData(message.author.id);
+        const currentJob = user.currentJob ? jobs.find(j => j.id === user.currentJob) : null;
+        const currentLevel = user.currentJob ? (user.jobLevels[user.currentJob] || 0) : 0;
+        const totalLevel = Object.values(user.jobLevels || {}).reduce((a, b) => a + b, 0);
+        const unlocked = jobs.filter((j, i) => {
+            if (j.id === 'legend') {
+                return jobs.slice(0, -1).every(job => (user.jobLevels[job.id] || 0) >= 100);
+            }
+            if (i === 0) return true;
+            const prev = jobs[i - 1];
+            return (user.jobLevels[prev.id] || 0) >= 100;
+        }).map(j => j.name).join(', ') || 'None';
+
+        const embed = new EmbedBuilder()
+            .setTitle('Levels')
+            .setDescription(`Current Job: ${currentJob ? currentJob.name : 'None'}\nCurrent Level: ${currentLevel}\nTotal Level: ${totalLevel}\nUnlocked Jobs: ${unlocked}`)
+            .setColor(getEmbedColor(user));
+        await message.reply({ embeds: [embed] });
+    } else if (command === 'givemoney' && args[0]) {
+        const amount = parseInt(args[0], 10);
+        if (!isNaN(amount)) {
+            const user = getUserData(message.author.id);
+            user.wallet += amount;
+            setUserData(message.author.id, user);
+            await message.reply({ content: `Added ${amount} coins to your wallet.` });
+        }
+    } else if (command === 'control') {
+        const amount = parseInt(args[0], 10) || 1;
+        const user = getUserData(message.author.id);
+        const itemMenu = new StringSelectMenuBuilder()
+            .setCustomId(`control_item_${message.author.id}_${amount}`)
+            .setPlaceholder('Select an item')
+            .addOptions(Object.entries(shopItems).map(([k, v]) => ({ label: v.name, value: k })));
+        const levelMenu = new StringSelectMenuBuilder()
+            .setCustomId(`control_level_${message.author.id}_${amount}`)
+            .setPlaceholder('Set job level')
+            .addOptions([
+                { label: 'Current Job', value: 'current' },
+                { label: 'All Jobs', value: 'all' },
+            ]);
+        const row1 = new ActionRowBuilder().addComponents(itemMenu);
+        const row2 = new ActionRowBuilder().addComponents(levelMenu);
+        const embed = new EmbedBuilder()
+            .setTitle('Control Panel')
+            .setDescription('Choose an item or job level option. Type `=givemoney <amount>` to add coins.')
+            .setColor(getEmbedColor(user));
+        await message.reply({ embeds: [embed], components: [row1, row2] });
     } else if (command === 'help') {
         const user = getUserData(message.author.id);
         const categories = {};
@@ -421,6 +472,30 @@ client.on('interactionCreate', async interaction => {
             }
             setUserData(interaction.user.id, user);
             await interaction.reply({ content: `You applied to ${jobs.find(j => j.id === jobId).name}!`, ephemeral: true });
+        } else if (customId.startsWith('control_item_')) {
+            const [, userId, amountStr] = customId.split('_');
+            if (interaction.user.id !== userId) return;
+            const amount = parseInt(amountStr, 10) || 1;
+            const item = values[0];
+            const user = getUserData(interaction.user.id);
+            user.inventory[item] = true;
+            setUserData(interaction.user.id, user);
+            await interaction.reply({ content: `Gave you ${amount}x ${shopItems[item].name}.`, ephemeral: true });
+        } else if (customId.startsWith('control_level_')) {
+            const [, userId, amountStr] = customId.split('_');
+            if (interaction.user.id !== userId) return;
+            const amount = parseInt(amountStr, 10) || 1;
+            const option = values[0];
+            const user = getUserData(interaction.user.id);
+            if (option === 'current' && user.currentJob) {
+                user.jobLevels[user.currentJob] = amount;
+            } else if (option === 'all') {
+                for (const j of jobs) {
+                    user.jobLevels[j.id] = amount;
+                }
+            }
+            setUserData(interaction.user.id, user);
+            await interaction.reply({ content: 'Job levels updated.', ephemeral: true });
         }
     }
 });
