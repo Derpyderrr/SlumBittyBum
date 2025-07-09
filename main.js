@@ -1029,6 +1029,7 @@ client.on('messageCreate', async message => {
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         if (interaction.commandName === 'math') {
+            await interaction.deferReply();
             const mode = interaction.options.getString('mode');
             const rawExpr = interaction.options.getString('expression');
             const expr = normalizeExpression(rawExpr);
@@ -1037,7 +1038,7 @@ client.on('interactionCreate', async interaction => {
                 .setTitle('🧮 Math Solver')
                 .setDescription(`**${mode}**\n\`${expr}\``)
                 .setColor(getEmbedColor(user));
-            await interaction.reply({ embeds: [embed] });
+            await interaction.editReply({ embeds: [embed] });
 
             let steps = [];
             let result;
