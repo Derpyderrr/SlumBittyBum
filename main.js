@@ -1046,11 +1046,15 @@ client.on('interactionCreate', async interaction => {
                     steps = mathsteps.solveEquation(expr);
                     if (steps.length > 0) {
                         result = steps[steps.length - 1].newEquation.ascii();
+                    } else {
+                        result = expr;
                     }
                 } else if (mode === 'simplify') {
                     steps = mathsteps.simplifyExpression(expr);
                     if (steps.length > 0) {
                         result = steps[steps.length - 1].newNode.toString();
+                    } else {
+                        result = expr;
                     }
                 } else {
                     result = math.evaluate(expr).toString();
