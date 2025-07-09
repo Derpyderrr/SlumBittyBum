@@ -6,11 +6,8 @@ const {
     ButtonBuilder,
     ButtonStyle,
     StringSelectMenuBuilder,
-    SlashCommandBuilder,
 } = require('discord.js');
 const fs = require('fs');
-const math = require('mathjs');
-const mathsteps = require('mathsteps');
 require('dotenv').config();
 
 const DATA_FILE = './data.json';
@@ -100,37 +97,6 @@ function getEmbedColor(user) {
     return user.color;
 }
 
-function normalizeExpression(expr) {
-    if (!expr) return '';
-    let out = expr.toLowerCase();
-    const numbers = {
-        zero: '0',
-        one: '1',
-        two: '2',
-        three: '3',
-        four: '4',
-        five: '5',
-        six: '6',
-        seven: '7',
-        eight: '8',
-        nine: '9',
-        ten: '10',
-    };
-    for (const [word, digit] of Object.entries(numbers)) {
-        const regex = new RegExp(`\\b${word}\\b`, 'g');
-        out = out.replace(regex, digit);
-    }
-    out = out
-        .replace(/plus/gi, '+')
-        .replace(/minus/gi, '-')
-        .replace(/(times|multiplied by|\bx\b)/gi, '*')
-        .replace(/(divided by|over)/gi, '/')
-        .replace(/(equals|equal to)/gi, '=')
-        .replace(/\s+/g, ' ');
-    // replace "x" used between numbers with *
-    out = out.replace(/(?<=\d)\s*x\s*(?=\d)/gi, '*');
-    return out.trim();
-}
 
 async function createUserWebhook(userId, channel) {
     const user = getUserData(userId);
@@ -313,25 +279,8 @@ const client = new Client({
 const prefix = '=';
 const clickCounters = new Map();
 
-client.once('ready', async () => {
+client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
-    const cmd = new SlashCommandBuilder()
-        .setName('math')
-        .setDescription('Solve or evaluate math expressions')
-        .addStringOption(o =>
-            o.setName('mode')
-                .setDescription('Operation')
-                .setRequired(true)
-                .addChoices(
-                    { name: 'solve', value: 'solve' },
-                    { name: 'simplify', value: 'simplify' },
-                    { name: 'evaluate', value: 'evaluate' },
-                ))
-        .addStringOption(o =>
-            o.setName('expression')
-                .setDescription('Expression or equation')
-                .setRequired(true));
-    await client.application.commands.create(cmd);
 });
 
 client.on('messageCreate', async message => {
@@ -1028,94 +977,6 @@ client.on('messageCreate', async message => {
 
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
-        if (interaction.commandName === 'math') {
-            await interaction.deferReply();
-            const mode = interaction.options.getString('mode');
-            const rawExpr = interaction.options.getString('expression');
-            const expr = normalizeExpression(rawExpr);
-            const user = getUserData(interaction.user.id);
-            const embed = new EmbedBuilder()
-                .setTitle('🧮 Math Solver')
-                .setDescription(`**${mode}**\n\`${expr}\``)
-                .setColor(getEmbedColor(user));
-            await interaction.editReply({ embeds: [embed] });
-
-            let steps = [];
-            let result;
-            try {
-                if (mode === 'solve') {
-                    steps = mathsteps.solveEquation(expr);
-                    if (steps.length > 0) {
-                        result = steps[steps.length - 1].newEquation.ascii();
-                    } else {
-                        result = expr;
-                    }
-                } else if (mode === 'simplify') {
-                    steps = mathsteps.simplifyExpression(expr);
-                    if (steps.length > 0) {
-                        result = steps[steps.length - 1].newNode.toString();
-                    } else {
-                        result = expr;
-                    }
-                } else {
-                    result = math.evaluate(expr).toString();
-                }
-            } catch (err) {
-                await interaction.editReply({ content: 'Failed to parse expression.', embeds: [] });
-                return;
-            }
-
-            for (const step of steps) {
-                await new Promise(r => setTimeout(r, 1000));
-                const text = mode === 'solve' ? step.newEquation.ascii() : step.newNode.toString();
-                embed.setDescription(`**${mode}**\n\`${text}\``);
-                await interaction.editReply({ embeds: [embed] });
-            }
-
-            const breakdown = steps.map((s, i) => `${i + 1}. ${mode === 'solve' ? s.newEquation.ascii() : s.newNode.toString()}`).join('\n');
-            const finalEmbed = new EmbedBuilder()
-                .setTitle('📊 Solution')
-                .setDescription(breakdown ? breakdown + `\n\n**Result:** ${result}` : `**Result:** ${result}`)
-                .setColor(getEmbedColor(user));
-
-            let verified = true;
-            if (mode === 'solve' && result) {
-                const parts = expr.split('=');
-                if (parts.length === 2) {
-                    const variable = parts[0].match(/[a-zA-Z]+/);
-                    if (variable) {
-                        const left = parts[0];
-                        const right = parts[1];
-                        const sols = result.split(/or/).map(s => s.trim());
-                        for (const sol of sols) {
-                            const scope = {};
-                            scope[variable[0]] = math.evaluate(sol);
-                            try {
-                                const lv = math.evaluate(left, scope);
-                                const rv = math.evaluate(right, scope);
-                                if (!math.equal(lv, rv)) {
-                                    verified = false;
-                                    break;
-                                }
-                            } catch {
-                                verified = false;
-                                break;
-                            }
-                        }
-                    } else {
-                        verified = false;
-                    }
-                } else {
-                    verified = false;
-                }
-            }
-
-            if (mode !== 'evaluate') {
-                finalEmbed.addFields({ name: 'Fact Check', value: verified ? '✅ Verified' : '⚠️ Could not verify' });
-            }
-
-            await interaction.followUp({ embeds: [finalEmbed] });
-        }
         return;
     }
     if (interaction.isButton()) {
