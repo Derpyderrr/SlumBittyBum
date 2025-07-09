@@ -20,3 +20,12 @@ Economy Discord bot with customizable embed colors, a job system and more.
 - `=open <basic|rare|epic>` &mdash; Open one of your lootboxes.
 - `=sell <item> [amount]` &mdash; Sell items from your inventory.
 - `=lootpool <command>` &mdash; Show the loot table for a command and possible coin rewards.
+- `=bank deposit <amount>` &mdash; Store coins for safekeeping.
+- `=bank withdraw <amount>` &mdash; Take coins back out of the bank.
+- `=coinflip <amount>` &mdash; Gamble your coins in a simple coin toss.
+- `=leaderboard <coins|level>` &mdash; View the top players.
+- `=profile` &mdash; View your wallet, bank and job stats.
+- `=quest start` &mdash; Begin a random quest.
+- `=quest claim` &mdash; Claim quest rewards when finished.
+- `=timers` &mdash; Check cooldown timers like your daily reward.
+- `=trade <@user> <item> [amount]` &mdash; Send coins or items to another player.
