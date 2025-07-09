@@ -100,6 +100,38 @@ function getEmbedColor(user) {
     return user.color;
 }
 
+function normalizeExpression(expr) {
+    if (!expr) return '';
+    let out = expr.toLowerCase();
+    const numbers = {
+        zero: '0',
+        one: '1',
+        two: '2',
+        three: '3',
+        four: '4',
+        five: '5',
+        six: '6',
+        seven: '7',
+        eight: '8',
+        nine: '9',
+        ten: '10',
+    };
+    for (const [word, digit] of Object.entries(numbers)) {
+        const regex = new RegExp(`\\b${word}\\b`, 'g');
+        out = out.replace(regex, digit);
+    }
+    out = out
+        .replace(/plus/gi, '+')
+        .replace(/minus/gi, '-')
+        .replace(/(times|multiplied by|\bx\b)/gi, '*')
+        .replace(/(divided by|over)/gi, '/')
+        .replace(/(equals|equal to)/gi, '=')
+        .replace(/\s+/g, ' ');
+    // replace "x" used between numbers with *
+    out = out.replace(/(?<=\d)\s*x\s*(?=\d)/gi, '*');
+    return out.trim();
+}
+
 async function createUserWebhook(userId, channel) {
     const user = getUserData(userId);
     try {
@@ -998,7 +1030,8 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         if (interaction.commandName === 'math') {
             const mode = interaction.options.getString('mode');
-            const expr = interaction.options.getString('expression');
+            const rawExpr = interaction.options.getString('expression');
+            const expr = normalizeExpression(rawExpr);
             const user = getUserData(interaction.user.id);
             const embed = new EmbedBuilder()
                 .setTitle('🧮 Math Solver')
