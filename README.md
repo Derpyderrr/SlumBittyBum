@@ -29,6 +29,3 @@ Economy Discord bot with customizable embed colors, a job system and more.
 - `=quest claim` &mdash; Claim quest rewards when finished.
 - `=timers` &mdash; Check cooldown timers like your daily reward.
 - `=trade <@user> <item> [amount]` &mdash; Send coins or items to another player.
-- `/math` &mdash; Slash command to solve or evaluate math expressions. Supports
-  common words like `plus`, `minus`, `times`/`x`, and numbers written out (e.g.
-  `one plus two`).
