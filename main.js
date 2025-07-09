@@ -136,17 +136,16 @@ async function sendResponse(message, user, options) {
     if (user.webhookActive && user.webhookId && user.webhookToken) {
         try {
             const webhook = await client.fetchWebhook(user.webhookId, user.webhookToken);
-            await webhook.send({
+            return await webhook.send({
                 username: user.webhookName || client.user.username,
                 avatarURL: user.webhookAvatar || client.user.displayAvatarURL(),
                 ...options,
             });
-            return;
         } catch (err) {
             console.error('Webhook send failed', err);
         }
     }
-    await message.reply(options);
+    return await message.reply(options);
 }
 
 const shopItems = {
@@ -157,6 +156,28 @@ const shopItems = {
     lootbox_rare: { price: 400, name: 'Rare Lootbox' },
     lootbox_epic: { price: 800, name: 'Epic Lootbox' },
 };
+
+const questRarities = {
+    common: { name: 'Common', min: 3, max: 5, reward: 200 },
+    rare: { name: 'Rare', min: 5, max: 8, reward: 400 },
+    epic: { name: 'Epic', min: 8, max: 12, reward: 800 },
+};
+
+const pendingTrades = new Map();
+
+function createQuest(previousRarity) {
+    const rarityKeys = Object.keys(questRarities);
+    let rarity = rarityKeys[Math.floor(Math.random() * rarityKeys.length)];
+    if (previousRarity && rarity === previousRarity) {
+        const filtered = rarityKeys.filter(r => r !== previousRarity);
+        rarity = filtered[Math.floor(Math.random() * filtered.length)];
+    }
+    const info = questRarities[rarity];
+    const tasks = ['dig', 'fish', 'hunt', 'work'];
+    const task = tasks[Math.floor(Math.random() * tasks.length)];
+    const goal = Math.floor(Math.random() * (info.max - info.min + 1)) + info.min;
+    return { task, goal, progress: 0, rarity };
+}
 
 const lootTables = {
     dig: [
@@ -226,7 +247,7 @@ const commandInfo = [
     { name: 'open', description: 'Open a lootbox', category: 'Economy' },
     { name: 'lootpool', description: 'Show loot chances for a command', category: 'Economy' },
     { name: 'bank', description: 'Deposit or withdraw coins', category: 'Economy' },
-    { name: 'trade', description: 'Send items to another user', category: 'Economy' },
+    { name: 'trade', description: 'Propose a trade to another user', category: 'Economy' },
     { name: 'leaderboard', description: 'Show top players', category: 'Economy' },
     { name: 'profile', description: 'View your overall stats', category: 'Utility' },
     { name: 'coinflip', description: 'Gamble your coins', category: 'Games' },
@@ -412,30 +433,55 @@ client.on('messageCreate', async message => {
         const sub = args[0]?.toLowerCase();
         if (sub === 'start') {
             if (user.activeQuest) {
-                await sendResponse(message, user, { content: 'You already have an active quest!' });
+                const embed = new EmbedBuilder()
+                    .setTitle('❗ Quest Already Active')
+                    .setDescription('Finish your current quest before starting a new one!')
+                    .setColor(getEmbedColor(user));
+                await sendResponse(message, user, { embeds: [embed] });
             } else {
-                const tasks = ['dig', 'fish', 'hunt', 'work'];
-                const task = tasks[Math.floor(Math.random() * tasks.length)];
-                const goal = Math.floor(Math.random() * 3) + 3;
-                user.activeQuest = { task, goal, progress: 0 };
+                user.activeQuest = createQuest();
                 setUserData(message.author.id, user);
-                await sendResponse(message, user, { content: `Quest started! Do **${goal}** ${task} commands.` });
+                const info = questRarities[user.activeQuest.rarity];
+                const embed = new EmbedBuilder()
+                    .setTitle(`🗺️ New ${info.name} Quest!`)
+                    .setDescription(`Do **${user.activeQuest.goal}** ${user.activeQuest.task} commands to earn **${info.reward}** coins.`)
+                    .setColor(getEmbedColor(user));
+                await sendResponse(message, user, { embeds: [embed] });
             }
         } else if (sub === 'claim') {
             if (user.activeQuest && user.activeQuest.progress >= user.activeQuest.goal) {
-                const reward = 200;
-                user.wallet += reward;
-                user.activeQuest = null;
+                const info = questRarities[user.activeQuest.rarity];
+                user.wallet += info.reward;
+                const prev = user.activeQuest.rarity;
+                user.activeQuest = createQuest(prev);
                 setUserData(message.author.id, user);
-                await sendResponse(message, user, { content: `Quest completed! You earned ${reward} coins.` });
+                const nextInfo = questRarities[user.activeQuest.rarity];
+                const embed = new EmbedBuilder()
+                    .setTitle('🎉 Quest Complete!')
+                    .setDescription(`You earned **${info.reward}** coins!\nNext quest: **${nextInfo.name}** - complete **${user.activeQuest.goal}** ${user.activeQuest.task} commands.`)
+                    .setColor(getEmbedColor(user));
+                await sendResponse(message, user, { embeds: [embed] });
             } else {
-                await sendResponse(message, user, { content: 'You have no completed quest to claim.' });
+                const embed = new EmbedBuilder()
+                    .setTitle('❌ No Completed Quest')
+                    .setDescription('You have no completed quest to claim.')
+                    .setColor(getEmbedColor(user));
+                await sendResponse(message, user, { embeds: [embed] });
             }
         } else {
             if (user.activeQuest) {
-                await sendResponse(message, user, { content: `Current quest: ${user.activeQuest.task} ${user.activeQuest.progress}/${user.activeQuest.goal}` });
+                const info = questRarities[user.activeQuest.rarity];
+                const embed = new EmbedBuilder()
+                    .setTitle(`📜 ${info.name} Quest`)
+                    .setDescription(`Task: **${user.activeQuest.task}**\nProgress: **${user.activeQuest.progress}/${user.activeQuest.goal}**`)
+                    .setColor(getEmbedColor(user));
+                await sendResponse(message, user, { embeds: [embed] });
             } else {
-                await sendResponse(message, user, { content: 'Start a quest with =quest start.' });
+                const embed = new EmbedBuilder()
+                    .setTitle('📜 No Active Quest')
+                    .setDescription('Start a quest with `=quest start`.')
+                    .setColor(getEmbedColor(user));
+                await sendResponse(message, user, { embeds: [embed] });
             }
         }
     } else if (command === 'timers') {
@@ -451,25 +497,51 @@ client.on('messageCreate', async message => {
     } else if (command === 'trade' && args[0] && args[1]) {
         const targetId = args[0].replace(/[^0-9]/g, '');
         const targetUser = client.users.cache.get(targetId);
-        if (!targetUser) return;
-        const item = args[1].toLowerCase();
-        const amount = parseInt(args[2], 10) || 1;
         const user = getUserData(message.author.id);
-        const receiver = getUserData(targetId);
-        if (['coin', 'coins', 'money'].includes(item)) {
-            if (amount <= 0 || user.wallet < amount) return;
-            user.wallet -= amount;
-            receiver.wallet += amount;
-        } else {
-            const inv = user.inventory[item];
-            if (!inv || inv.count < amount) return;
-            inv.count -= amount;
-            if (inv.count <= 0) delete user.inventory[item];
-            receiver.inventory[item] = { count: (receiver.inventory[item]?.count || 0) + amount };
+        if (!targetUser || targetUser.bot) {
+            const embed = new EmbedBuilder()
+                .setTitle('❌ Trade Error')
+                .setDescription('You cannot trade with bots.')
+                .setColor(getEmbedColor(user));
+            await sendResponse(message, user, { embeds: [embed] });
+            return;
         }
-        setUserData(message.author.id, user);
-        setUserData(targetId, receiver);
-        await sendResponse(message, user, { content: `Traded ${amount} ${item} to ${targetUser.username}.` });
+
+        const forIndex = args.findIndex(a => a.toLowerCase() === 'for');
+        const giveItem = args[1].toLowerCase();
+        const giveAmount = parseInt(args[2], 10) || 1;
+        let receiveItem = null;
+        let receiveAmount = 0;
+        if (forIndex !== -1) {
+            receiveItem = args[forIndex + 1]?.toLowerCase();
+            receiveAmount = parseInt(args[forIndex + 2], 10) || 1;
+        }
+
+        if (['coin', 'coins', 'money'].includes(giveItem)) {
+            if (giveAmount <= 0 || user.wallet < giveAmount) {
+                return;
+            }
+        } else {
+            const inv = user.inventory[giveItem];
+            if (!inv || inv.count < giveAmount) {
+                return;
+            }
+        }
+
+        const tradeId = `trade_${message.id}_${Date.now()}`;
+        const acceptBtn = new ButtonBuilder().setCustomId(`${tradeId}_a`).setLabel('Accept').setStyle(ButtonStyle.Success);
+        const denyBtn = new ButtonBuilder().setCustomId(`${tradeId}_d`).setLabel('Deny').setStyle(ButtonStyle.Danger);
+        const counterBtn = new ButtonBuilder().setCustomId(`${tradeId}_c`).setLabel('Counter').setStyle(ButtonStyle.Secondary);
+        const row = new ActionRowBuilder().addComponents(acceptBtn, denyBtn, counterBtn);
+
+        const receiveText = receiveItem ? ` for **${receiveAmount}** ${receiveItem}` : '';
+        const embed = new EmbedBuilder()
+            .setTitle('🤝 Trade Offer')
+            .setDescription(`<@${message.author.id}> offers **${giveAmount}** ${giveItem}${receiveText} to <@${targetId}>`)
+            .setColor(getEmbedColor(user));
+
+        const sent = await message.channel.send({ embeds: [embed], components: [row] });
+        pendingTrades.set(tradeId, { fromId: message.author.id, toId: targetId, giveItem, giveAmount, receiveItem, receiveAmount, messageId: sent.id });
     } else if (['dig', 'hunt', 'fish'].includes(command)) {
         const user = getUserData(message.author.id);
         let itemKey;
@@ -905,6 +977,89 @@ client.on('messageCreate', async message => {
 client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
         const { customId } = interaction;
+        if (customId.startsWith('trade_')) {
+            const parts = customId.split('_');
+            const id = `trade_${parts[1]}_${parts[2]}`;
+            const action = parts[3];
+            const trade = pendingTrades.get(id);
+            if (!trade) {
+                await interaction.reply({ content: 'This trade is no longer available.', ephemeral: true });
+                return;
+            }
+            if (interaction.user.id !== trade.toId) {
+                await interaction.reply({ content: 'This trade is not for you.', ephemeral: true });
+                return;
+            }
+
+            const fromUser = getUserData(trade.fromId);
+            const toUser = getUserData(trade.toId);
+            if (action === 'a') {
+                if (trade.receiveItem) {
+                    if (['coin', 'coins', 'money'].includes(trade.receiveItem)) {
+                        if (toUser.wallet < trade.receiveAmount) {
+                            await interaction.reply({ content: 'You lack the required coins.', ephemeral: true });
+                            return;
+                        }
+                        toUser.wallet -= trade.receiveAmount;
+                        fromUser.wallet += trade.receiveAmount;
+                    } else {
+                        const inv = toUser.inventory[trade.receiveItem];
+                        if (!inv || inv.count < trade.receiveAmount) {
+                            await interaction.reply({ content: 'You lack the required items.', ephemeral: true });
+                            return;
+                        }
+                        inv.count -= trade.receiveAmount;
+                        if (inv.count <= 0) delete toUser.inventory[trade.receiveItem];
+                        fromUser.inventory[trade.receiveItem] = { count: (fromUser.inventory[trade.receiveItem]?.count || 0) + trade.receiveAmount };
+                    }
+                }
+
+                if (['coin', 'coins', 'money'].includes(trade.giveItem)) {
+                    if (fromUser.wallet < trade.giveAmount) {
+                        await interaction.reply({ content: 'The offerer lacks the coins.', ephemeral: true });
+                        return;
+                    }
+                    fromUser.wallet -= trade.giveAmount;
+                    toUser.wallet += trade.giveAmount;
+                } else {
+                    const inv = fromUser.inventory[trade.giveItem];
+                    if (!inv || inv.count < trade.giveAmount) {
+                        await interaction.reply({ content: 'The offerer lacks the items.', ephemeral: true });
+                        return;
+                    }
+                    inv.count -= trade.giveAmount;
+                    if (inv.count <= 0) delete fromUser.inventory[trade.giveItem];
+                    toUser.inventory[trade.giveItem] = { count: (toUser.inventory[trade.giveItem]?.count || 0) + trade.giveAmount };
+                }
+
+                setUserData(trade.fromId, fromUser);
+                setUserData(trade.toId, toUser);
+                pendingTrades.delete(id);
+                const embed = new EmbedBuilder()
+                    .setTitle('✅ Trade Completed')
+                    .setDescription(`<@${trade.fromId}> and <@${trade.toId}> traded successfully!`)
+                    .setColor(getEmbedColor(fromUser));
+                await interaction.message.edit({ embeds: [embed], components: [] });
+                await interaction.reply({ content: 'Trade accepted!', ephemeral: true });
+            } else if (action === 'd') {
+                pendingTrades.delete(id);
+                const embed = new EmbedBuilder()
+                    .setTitle('❌ Trade Denied')
+                    .setColor(0xff0000);
+                await interaction.message.edit({ embeds: [embed], components: [] });
+                await interaction.reply({ content: 'Trade denied.', ephemeral: true });
+            } else if (action === 'c') {
+                pendingTrades.delete(id);
+                const embed = new EmbedBuilder()
+                    .setTitle('↩️ Trade Countered')
+                    .setDescription('Send a new trade to counter this offer.')
+                    .setColor(0xffff00);
+                await interaction.message.edit({ embeds: [embed], components: [] });
+                await interaction.reply({ content: 'You may now send a counter offer with =trade.', ephemeral: true });
+            }
+            return;
+        }
+
         if (!customId.startsWith('ping_')) return;
         let count = clickCounters.get(customId) || 0;
         count += 1;
