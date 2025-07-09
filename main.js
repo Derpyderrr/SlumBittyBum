@@ -6,6 +6,7 @@ const {
     ButtonBuilder,
     ButtonStyle,
     StringSelectMenuBuilder,
+    SlashCommandBuilder,
 } = require('discord.js');
 const fs = require('fs');
 require('dotenv').config();
@@ -258,7 +259,7 @@ const commandInfo = [
     { name: 'whpfp', description: 'Set webhook avatar URL', category: 'Utility' },
     { name: 'whname', description: 'Set webhook name', category: 'Utility' },
     { name: 'embedcolor', description: 'Change embed color', category: 'Utility' },
-    { name: 'job', description: 'Apply for a job (use `=job list` to view)', category: 'Jobs' },
+    { name: 'job', description: 'Apply for a job (use `/job list` to view)', category: 'Jobs' },
     { name: 'work', description: 'Work at your current job', category: 'Jobs' },
     { name: 'level', description: 'Show your job levels', category: 'Jobs' },
     { name: 'levelset', description: 'Set your current job level', category: 'Admin' },
@@ -268,6 +269,19 @@ const commandInfo = [
     { name: 'help', description: 'Show this help message', category: 'Utility' },
 ];
 
+async function registerSlashCommands() {
+    const commands = commandInfo.map(info =>
+        new SlashCommandBuilder()
+            .setName(info.name)
+            .setDescription(info.description)
+            .addStringOption(o =>
+                o.setName('args').setDescription('Command arguments').setRequired(false)
+            )
+            .toJSON()
+    );
+    await client.application.commands.set(commands);
+}
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -276,19 +290,14 @@ const client = new Client({
     ],
 });
 
-const prefix = '=';
 const clickCounters = new Map();
 
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
+    registerSlashCommands().catch(console.error);
 });
 
-client.on('messageCreate', async message => {
-    if (message.author.bot) return;
-    if (!message.content.startsWith(prefix)) return;
-
-    const args = message.content.slice(prefix.length).trim().split(/\s+/);
-    const command = args.shift()?.toLowerCase();
+async function handleCommand(message, command, args) {
     let user = getUserData(message.author.id);
 
     if (user.webhookActive) {
@@ -480,7 +489,7 @@ client.on('messageCreate', async message => {
             } else {
                 const embed = new EmbedBuilder()
                     .setTitle('📜 No Active Quest')
-                    .setDescription('Start a quest with `=quest start`.')
+                    .setDescription('Start a quest with `/quest start`.')
                     .setColor(getEmbedColor(user));
                 await sendResponse(message, user, { embeds: [embed] });
             }
@@ -644,7 +653,7 @@ client.on('messageCreate', async message => {
             const embed = new EmbedBuilder()
                 .setTitle('🛒 Shop Items')
                 .setDescription(desc)
-                .setFooter({ text: `Use =shop buy <item>` })
+                .setFooter({ text: `Use /shop buy <item>` })
                 .setColor(getEmbedColor(user));
             await sendResponse(message, user, { embeds: [embed] });
         }
@@ -768,7 +777,7 @@ client.on('messageCreate', async message => {
             await createUserWebhook(message.author.id, message.channel);
             user = getUserData(message.author.id);
             const embed = new EmbedBuilder()
-                .setTitle('Webhook mode now active. Use =whpfp or =whname to customize your webhook')
+                .setTitle('Webhook mode now active. Use /whpfp or /whname to customize your webhook')
                 .setColor(getEmbedColor(user));
             await sendResponse(message, user, { embeds: [embed] });
         }
@@ -814,7 +823,7 @@ client.on('messageCreate', async message => {
             if (!job) {
                 const embed = new EmbedBuilder()
                     .setTitle('💼 Job')
-                    .setDescription('Job not found. Use `=job` to view available jobs.')
+                    .setDescription('Job not found. Use `/job` to view available jobs.')
                     .setColor(getEmbedColor(user));
                 await sendResponse(message, user, { embeds: [embed] });
             } else {
@@ -874,7 +883,7 @@ client.on('messageCreate', async message => {
         if (!user.currentJob) {
             const embed = new EmbedBuilder()
                 .setTitle('💼 Job')
-                .setDescription('Apply for a job first using =job')
+                .setDescription('Apply for a job first using /job')
                 .setColor(getEmbedColor(user));
             await sendResponse(message, user, { embeds: [embed] });
         } else {
@@ -954,7 +963,7 @@ client.on('messageCreate', async message => {
         const row = new ActionRowBuilder().addComponents(itemMenu);
         const embed = new EmbedBuilder()
             .setTitle('🛠️ Control Panel')
-            .setDescription('Choose an item to add. Use `=givemoney`, `=levelset`, or `=levelsetall` for other actions.')
+            .setDescription('Choose an item to add. Use `/givemoney`, `/levelset`, or `/levelsetall` for other actions.')
             .setColor(getEmbedColor(user));
         await sendResponse(message, user, { embeds: [embed], components: [row] });
     } else if (command === 'help') {
@@ -962,7 +971,7 @@ client.on('messageCreate', async message => {
         const categories = {};
         for (const info of commandInfo) {
             if (!categories[info.category]) categories[info.category] = [];
-            categories[info.category].push(`**=${info.name}** - ${info.description}`);
+            categories[info.category].push(`**/${info.name}** - ${info.description}`);
         }
         const embed = new EmbedBuilder()
             .setTitle('📖 Help Menu')
@@ -973,10 +982,14 @@ client.on('messageCreate', async message => {
         });
         await sendResponse(message, user, { embeds: [embed] });
     }
-});
+}
 
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
+        const argsStr = interaction.options.getString('args') || '';
+        const args = argsStr.trim().split(/\s+/).filter(a => a.length > 0);
+        interaction.author = interaction.user;
+        await handleCommand(interaction, interaction.commandName, args);
         return;
     }
     if (interaction.isButton()) {
@@ -1059,7 +1072,7 @@ client.on('interactionCreate', async interaction => {
                     .setDescription('Send a new trade to counter this offer.')
                     .setColor(0xffff00);
                 await interaction.message.edit({ embeds: [embed], components: [] });
-                await interaction.reply({ content: 'You may now send a counter offer with =trade.', ephemeral: true });
+                await interaction.reply({ content: 'You may now send a counter offer with /trade.', ephemeral: true });
             }
             return;
         }
